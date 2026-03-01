@@ -119,6 +119,12 @@ main() {
     fi
     URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}-${OS}-${ARCH}"
 
+    # Detect existing installation
+    EXISTING=""
+    if [ -x "${INSTALL_DIR}/${BINARY}" ]; then
+        EXISTING="true"
+    fi
+
     printf "\n"
     printf "${BOLD}${CYAN}uBlock DNS CLI Installer${RESET}\n"
     printf "${DIM}========================${RESET}\n"
@@ -126,8 +132,13 @@ main() {
     printf " ${BOLD}OS${RESET}      : %s\n" "$OS"
     printf " ${BOLD}Arch${RESET}    : %s\n" "$ARCH"
     printf " ${BOLD}Profile${RESET} : %s\n" "$PROFILE_ID"
+    if [ -n "$EXISTING" ]; then
+        CURRENT_VER=$(${INSTALL_DIR}/${BINARY} version 2>/dev/null | head -1 || echo "unknown")
+        printf " ${BOLD}Current${RESET} : %s (reinstalling)\n" "$CURRENT_VER"
+    fi
     printf "\n"
 
+    # Download FIRST while DNS still works (existing service may be serving DNS)
     info "Downloading ${BINARY}..."
     TMP_BIN="$(mktemp "/tmp/${BINARY}.XXXXXX")"
     if command -v curl >/dev/null 2>&1; then
@@ -140,22 +151,40 @@ main() {
     fi
     chmod +x "$TMP_BIN"
 
+    # Now stop existing service — download already complete, safe to break DNS briefly
+    if [ -n "$EXISTING" ]; then
+        info "Stopping existing service..."
+        run_as_root "${INSTALL_DIR}/${BINARY}" stop 2>/dev/null || true
+    fi
+
     info "Installing to ${INSTALL_DIR}/${BINARY}..."
     run_as_root mv "$TMP_BIN" "${INSTALL_DIR}/${BINARY}"
     TMP_BIN=""
-    
+
     info "Setting up system service..."
-    run_as_root "${INSTALL_DIR}/${BINARY}" install -profile "$PROFILE_ID"
+    if ! run_as_root "${INSTALL_DIR}/${BINARY}" install -profile "$PROFILE_ID"; then
+        error "Service install failed."
+        if [ -n "$EXISTING" ]; then
+            printf "${YELLOW}  Tip: try 'sudo ublockdns uninstall' then re-run the installer.${RESET}\n"
+        fi
+        exit 1
+    fi
 
     info "Waiting for local DNS proxy to become ready..."
     if ! wait_for_dns_ready; then
-        error "DNS validation failed after install. Rolling back..."
-        run_as_root "${INSTALL_DIR}/${BINARY}" uninstall || true
+        error "DNS validation timed out — the service may still be starting."
+        printf "  Check with: ${BOLD}ublockdns status${RESET}\n"
+        printf "  If broken:  ${BOLD}sudo ublockdns uninstall${RESET}\n"
+        printf "\n"
         exit 1
     fi
 
     printf "\n"
-    success "Done! uBlock DNS is now active."
+    if [ -n "$EXISTING" ]; then
+        success "Done! uBlock DNS reinstalled with profile ${PROFILE_ID}."
+    else
+        success "Done! uBlock DNS is now active."
+    fi
     printf "  ${BOLD}Status:${RESET}    ublockdns status\n"
     printf "  ${BOLD}Uninstall:${RESET} sudo ublockdns uninstall\n"
     printf "\n"
