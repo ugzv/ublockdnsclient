@@ -115,7 +115,7 @@ main() {
 
     TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
     if [ -z "$TAG" ]; then
-        TAG="v0.1.10"
+        TAG="v0.1.11"
     fi
     URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}-${OS}-${ARCH}"
 
