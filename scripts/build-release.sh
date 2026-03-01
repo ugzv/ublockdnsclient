@@ -12,13 +12,21 @@ build() {
   local goos="$1"
   local goarch="$2"
   local output="${OUT_DIR}/ublockdns-${goos}-${goarch}"
+  local cgo=0
 
-  GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 \
+  # darwin requires CGO_ENABLED=1 for syslog via cgo in nextdns/host
+  if [ "${goos}" = "darwin" ]; then
+    cgo=1
+  fi
+
+  GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED="${cgo}" \
     go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "${output}" "${ROOT_DIR}"
 }
 
 build linux amd64
 build linux arm64
+build darwin amd64
+build darwin arm64
 
 (
   cd "${OUT_DIR}"

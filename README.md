@@ -12,7 +12,7 @@ Use the hosted installer:
 curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>
 ```
 
-The installer currently supports Linux (`amd64`, `arm64`).
+Supports macOS and Linux (`amd64`, `arm64`).
 
 Or build locally:
 
@@ -61,6 +61,8 @@ Release builds (local):
 - GitHub Actions builds binaries for:
   - `linux/amd64`
   - `linux/arm64`
+  - `darwin/amd64`
+  - `darwin/arm64`
 - Assets are uploaded as `ublockdns-<os>-<arch>` plus `SHA256SUMS`.
 
 ## Security
