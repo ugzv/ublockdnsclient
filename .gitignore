@@ -1,4 +1,8 @@
 dist/
 cli
 ublockdns
+ublockdnsclient
 ublockdns-*
+*.test
+coverage.out
+.DS_Store

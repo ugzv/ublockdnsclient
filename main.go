@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"regexp"
 	"runtime"
-	"os/signal"
 	"strings"
 	"syscall"
 	"time"
@@ -26,9 +26,10 @@ import (
 	"github.com/nextdns/nextdns/resolver/query"
 )
 
+var version = "dev"
+
 const (
-	version     = "0.1.10"
-	serviceName = "ublockdns"
+	serviceName      = "ublockdns"
 	defaultDoHServer = "https://my.ublockdns.com"
 )
 

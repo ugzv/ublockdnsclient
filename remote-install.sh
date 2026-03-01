@@ -99,6 +99,13 @@ main() {
     fi
 
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$OS" in
+        linux) ;;
+        *)
+            error "Unsupported OS: $OS (supported: linux)"
+            exit 1
+            ;;
+    esac
     ARCH=$(uname -m)
     case "$ARCH" in
         x86_64|amd64) ARCH="amd64" ;;
@@ -108,7 +115,7 @@ main() {
 
     TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
     if [ -z "$TAG" ]; then
-        TAG="v0.1.9"
+        TAG="v0.1.10"
     fi
     URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}-${OS}-${ARCH}"
 

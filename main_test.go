@@ -1,0 +1,78 @@
+package main
+
+import "testing"
+
+func TestBuildDoHTarget(t *testing.T) {
+	tests := []struct {
+		name      string
+		base      string
+		profileID string
+		wantURL   string
+		wantHost  string
+		wantPath  string
+		wantErr   bool
+	}{
+		{
+			name:      "valid base",
+			base:      "https://my.ublockdns.com",
+			profileID: "abc123",
+			wantURL:   "https://my.ublockdns.com/abc123",
+			wantHost:  "my.ublockdns.com",
+			wantPath:  "/abc123",
+		},
+		{
+			name:      "base with existing path",
+			base:      "https://example.com/dns-query",
+			profileID: "abc123",
+			wantURL:   "https://example.com/dns-query/abc123",
+			wantHost:  "example.com",
+			wantPath:  "/dns-query/abc123",
+		},
+		{
+			name:      "invalid base",
+			base:      "://invalid",
+			profileID: "abc123",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotURL, gotHost, gotPath, err := buildDoHTarget(tt.base, tt.profileID)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotURL != tt.wantURL {
+				t.Fatalf("url mismatch: want %q got %q", tt.wantURL, gotURL)
+			}
+			if gotHost != tt.wantHost {
+				t.Fatalf("host mismatch: want %q got %q", tt.wantHost, gotHost)
+			}
+			if gotPath != tt.wantPath {
+				t.Fatalf("path mismatch: want %q got %q", tt.wantPath, gotPath)
+			}
+		})
+	}
+}
+
+func TestResolveDoHServer(t *testing.T) {
+	t.Setenv("UBLOCKDNS_DOH_SERVER", "")
+	if got := resolveDoHServer(""); got != defaultDoHServer {
+		t.Fatalf("expected default server %q, got %q", defaultDoHServer, got)
+	}
+
+	t.Setenv("UBLOCKDNS_DOH_SERVER", "https://env.example.com/")
+	if got := resolveDoHServer(""); got != "https://env.example.com" {
+		t.Fatalf("expected env override, got %q", got)
+	}
+
+	if got := resolveDoHServer("https://flag.example.com/"); got != "https://flag.example.com" {
+		t.Fatalf("expected flag override, got %q", got)
+	}
+}

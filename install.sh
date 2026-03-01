@@ -99,6 +99,13 @@ main() {
     fi
 
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$OS" in
+        linux) ;;
+        *)
+            error "Unsupported OS: $OS (supported: linux)"
+            exit 1
+            ;;
+    esac
     ARCH=$(uname -m)
     case "$ARCH" in
         x86_64|amd64) ARCH="amd64" ;;
