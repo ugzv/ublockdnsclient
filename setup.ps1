@@ -9,10 +9,15 @@ param(
     [string]$Version,
 
     [Parameter(Mandatory = $false)]
-    [switch]$KeepOpen
+    [switch]$KeepOpen,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = "Stop"
+$logPath = Join-Path $env:TEMP "ublockdns-setup.log"
+$setupOk = $false
 
 function Test-Admin {
     $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -36,55 +41,72 @@ if (-not (Test-Admin)) {
     exit 0
 }
 
-Write-Host "uBlock DNS Setup (Windows)"
-Write-Host "---------------------------"
+try {
+    Start-Transcript -Path $logPath -Force | Out-Null
+} catch {}
 
-if (-not $ProfileId) {
-    $ProfileId = Read-Host "Enter your uBlock DNS profile ID"
-}
-if (-not $ProfileId) {
-    throw "Profile ID is required."
-}
+try {
+    Write-Host "uBlock DNS Setup (Windows)"
+    Write-Host "---------------------------"
 
-if (-not $AccountToken) {
-    $tokenPrompt = Read-Host "Enter account token for instant rule updates (optional, press Enter to skip)"
-    if ($tokenPrompt) {
-        $AccountToken = $tokenPrompt
+    if (-not $ProfileId) {
+        $ProfileId = Read-Host "Enter your uBlock DNS profile ID"
     }
-}
+    if (-not $ProfileId) {
+        throw "Profile ID is required."
+    }
 
-$repoRoot = Split-Path -Parent $PSCommandPath
-$installerPath = Join-Path $repoRoot "install.ps1"
+    if (-not $AccountToken) {
+        $tokenPrompt = Read-Host "Enter account token for instant rule updates (optional, press Enter to skip)"
+        if ($tokenPrompt) {
+            $AccountToken = $tokenPrompt
+        }
+    }
 
-if (-not (Test-Path $installerPath)) {
-    Write-Host "Downloading install.ps1 from GitHub ..."
-    $installerUrl = "https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1"
-    Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
-}
+    $repoRoot = Split-Path -Parent $PSCommandPath
+    $installerPath = Join-Path $repoRoot "install.ps1"
 
-$installArgs = @("-ProfileId", $ProfileId)
-if ($AccountToken) { $installArgs += @("-AccountToken", $AccountToken) }
-if ($Version) { $installArgs += @("-Version", $Version) }
+    if (-not (Test-Path $installerPath)) {
+        Write-Host "Downloading install.ps1 from GitHub ..."
+        $installerUrl = "https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1"
+        Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+    }
 
-Write-Host "Running installer ..."
-& powershell -ExecutionPolicy Bypass -File $installerPath @installArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "Installer failed with exit code $LASTEXITCODE."
-}
+    $installArgs = @("-ProfileId", $ProfileId)
+    if ($AccountToken) { $installArgs += @("-AccountToken", $AccountToken) }
+    if ($Version) { $installArgs += @("-Version", $Version) }
 
-Write-Host ""
-Write-Host "Setup complete."
-Write-Host "Run this anytime to check status:"
-Write-Host "  $env:ProgramFiles\uBlockDNS\ublockdns.exe status"
+    Write-Host "Running installer ..."
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath @installArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installer failed with exit code $LASTEXITCODE."
+    }
 
-$statusExe = Join-Path $env:ProgramFiles "uBlockDNS\ublockdns.exe"
-if (Test-Path $statusExe) {
     Write-Host ""
-    Write-Host "Current status:"
-    & $statusExe status
-}
+    Write-Host "Setup complete."
+    Write-Host "Run this anytime to check status:"
+    Write-Host "  $env:ProgramFiles\uBlockDNS\ublockdns.exe status"
 
-if ($KeepOpen) {
+    $statusExe = Join-Path $env:ProgramFiles "uBlockDNS\ublockdns.exe"
+    if (Test-Path $statusExe) {
+        Write-Host ""
+        Write-Host "Current status:"
+        & $statusExe status
+    } else {
+        Write-Warning "Binary not found at $statusExe"
+    }
+    $setupOk = $true
+} catch {
     Write-Host ""
-    [void](Read-Host "Press Enter to close")
+    Write-Error "Setup failed: $($_.Exception.Message)"
+    Write-Host "See log: $logPath"
+} finally {
+    try { Stop-Transcript | Out-Null } catch {}
+    if (-not $setupOk) {
+        $global:LASTEXITCODE = 1
+    }
+    if ($KeepOpen -or -not $NoPause) {
+        Write-Host ""
+        [void](Read-Host "Press Enter to close")
+    }
 }
