@@ -19,6 +19,13 @@ iwr https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1 -Out
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 ```
 
+Beginner-friendly guided setup (auto-elevates and prompts for values):
+
+```powershell
+iwr https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/setup.ps1 -OutFile setup.ps1
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
 Prebuilt binaries currently target:
 - `linux/amd64`
 - `linux/arm64`
@@ -88,7 +95,7 @@ Release builds (local):
 
 - Tag a commit as `vX.Y.Z`.
 - GitHub Actions uses GoReleaser to build and publish release assets.
-- Assets are uploaded as `ublockdns-<os>-<arch>` (or `...-armv7`) plus `SHA256SUMS`, along with installer scripts (`install.sh`, `install.ps1`).
+- Assets are uploaded as `ublockdns-<os>-<arch>` (or `...-armv7`) plus `SHA256SUMS`, along with installer scripts (`install.sh`, `install.ps1`, `setup.ps1`).
 
 ## Security
 

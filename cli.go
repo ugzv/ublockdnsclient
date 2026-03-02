@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 )
 
 func usage() {
@@ -29,7 +31,12 @@ Usage:
 
 func main() {
 	if len(os.Args) < 2 {
+		if runtime.GOOS == "windows" {
+			fmt.Fprintln(os.Stderr, "uBlock DNS is a command-line tool.")
+			fmt.Fprintln(os.Stderr, "For guided setup, run setup.ps1 as Administrator.")
+		}
 		usage()
+		pauseBeforeExit()
 		os.Exit(1)
 	}
 
@@ -90,8 +97,20 @@ func main() {
 
 	default:
 		usage()
+		pauseBeforeExit()
 		os.Exit(1)
 	}
+}
+
+func pauseBeforeExit() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	if os.Getenv("UBLOCKDNS_NO_PAUSE") == "1" {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Press Enter to exit...")
+	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 }
 
 func flagValue(name string) string {

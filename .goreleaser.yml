@@ -56,3 +56,4 @@ release:
   extra_files:
     - glob: install.sh
     - glob: install.ps1
+    - glob: setup.ps1
