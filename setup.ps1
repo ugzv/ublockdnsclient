@@ -30,14 +30,32 @@ if (-not (Test-Admin)) {
     $args = @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
-        "-File", ('"{0}"' -f $PSCommandPath),
-        "-KeepOpen"
+        "-File", ('"{0}"' -f $PSCommandPath)
     )
+    if ($KeepOpen) { $args += "-KeepOpen" }
+    if ($NoPause) { $args += "-NoPause" }
     if ($ProfileId) { $args += @("-ProfileId", ('"{0}"' -f $ProfileId)) }
     if ($AccountToken) { $args += @("-AccountToken", ('"{0}"' -f $AccountToken)) }
     if ($Version) { $args += @("-Version", ('"{0}"' -f $Version)) }
 
-    Start-Process -FilePath "powershell" -Verb RunAs -ArgumentList ($args -join " ") | Out-Null
+    $startParams = @{
+        FilePath     = "powershell"
+        Verb         = "RunAs"
+        ArgumentList = ($args -join " ")
+    }
+    if ($NoPause) {
+        $startParams["Wait"] = $true
+        $startParams["PassThru"] = $true
+    }
+
+    try {
+        $proc = Start-Process @startParams
+        if ($NoPause -and $proc) {
+            exit $proc.ExitCode
+        }
+    } catch {
+        throw "Failed to start elevated setup: $($_.Exception.Message)"
+    }
     exit 0
 }
 
@@ -102,11 +120,13 @@ try {
     Write-Host "See log: $logPath"
 } finally {
     try { Stop-Transcript | Out-Null } catch {}
+    $exitCode = 0
     if (-not $setupOk) {
-        $global:LASTEXITCODE = 1
+        $exitCode = 1
     }
     if ($KeepOpen -or -not $NoPause) {
         Write-Host ""
         [void](Read-Host "Press Enter to close")
     }
+    exit $exitCode
 }

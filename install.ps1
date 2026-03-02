@@ -93,6 +93,28 @@ if ($LASTEXITCODE -ne 0) {
     throw "Service installation failed with exit code $LASTEXITCODE."
 }
 
+$serviceName = "ublockdns"
+$serviceReady = $false
+$deadline = (Get-Date).AddSeconds(45)
+do {
+    $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($null -ne $svc) {
+        if ($svc.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running) {
+            $serviceReady = $true
+            break
+        }
+        if ($svc.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+            break
+        }
+    }
+    Start-Sleep -Seconds 1
+} while ((Get-Date) -lt $deadline)
+
+if (-not $serviceReady) {
+    $lastStatus = if ($null -eq $svc) { "not-installed" } else { $svc.Status.ToString() }
+    throw "Service '$serviceName' did not reach Running state (last status: $lastStatus). Check Windows Event Log -> System for details."
+}
+
 Write-Host "Done."
 Write-Host "  Status:    $exePath status"
 Write-Host "  Uninstall: $exePath uninstall"

@@ -10,16 +10,69 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"os/signal"
 	"strings"
 	"time"
 
 	"github.com/nextdns/nextdns/host"
+	"github.com/nextdns/nextdns/host/service"
 	"github.com/nextdns/nextdns/proxy"
 	"github.com/nextdns/nextdns/resolver"
 	"github.com/nextdns/nextdns/resolver/endpoint"
 	"github.com/nextdns/nextdns/resolver/query"
 )
+
+type proxyRunner struct {
+	proxy   proxy.Proxy
+	onInit  []func(ctx context.Context)
+	cancel  context.CancelFunc
+	stopped chan struct{}
+}
+
+func (p *proxyRunner) Start() error {
+	errC := make(chan error, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	p.cancel = cancel
+	p.stopped = make(chan struct{})
+
+	for _, f := range p.onInit {
+		go f(ctx)
+	}
+
+	go func() {
+		defer close(p.stopped)
+		if err := p.proxy.ListenAndServe(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			select {
+			case errC <- err:
+			default:
+			}
+		}
+	}()
+
+	// Match NextDNS service startup behavior: return quickly after spawn,
+	// while still surfacing immediate startup failures.
+	select {
+	case err := <-errC:
+		return err
+	case <-time.After(5 * time.Second):
+		return nil
+	}
+}
+
+func (p *proxyRunner) Stop() error {
+	if p.cancel == nil {
+		return nil
+	}
+	p.cancel()
+	p.cancel = nil
+	if p.stopped != nil {
+		<-p.stopped
+	}
+	return nil
+}
+
+func (p *proxyRunner) Log(msg string) {
+	log.Println(msg)
+}
 
 // run starts the DNS proxy in the foreground.
 func run(profileID, overrideServer, overrideAPIServer, accountToken string) error {
@@ -73,17 +126,7 @@ func run(profileID, overrideServer, overrideAPIServer, accountToken string) erro
 		InfoLog:             func(msg string) { log.Println(msg) },
 		ErrorLog:            func(err error) { log.Printf("ERROR: %v", err) },
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, shutdownSignals()...)
-		<-sigCh
-		log.Println("Shutting down...")
-		cancel()
-	}()
+	var onInit []func(ctx context.Context)
 
 	if strings.TrimSpace(accountToken) != "" {
 		accountToken = strings.TrimSpace(accountToken)
@@ -94,12 +137,22 @@ func run(profileID, overrideServer, overrideAPIServer, accountToken string) erro
 	}
 
 	if strings.TrimSpace(accountToken) != "" {
-		go watchRulesUpdates(ctx, apiServer, profileID, accountToken)
+		onInit = append(onInit, func(ctx context.Context) {
+			watchRulesUpdates(ctx, apiServer, profileID, accountToken)
+		})
 	} else {
 		log.Printf("Rules update stream disabled: no -token provided (cache still expires naturally)")
 	}
 
-	return p.ListenAndServe(ctx)
+	runner := &proxyRunner{
+		proxy:  p,
+		onInit: onInit,
+	}
+	if err := service.Run(serviceName, runner); err != nil {
+		log.Printf("Startup failed: %v", err)
+		return err
+	}
+	return nil
 }
 
 func resolveDoHServer(overrideServer string) string {
