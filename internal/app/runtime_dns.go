@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -75,11 +75,11 @@ func (p *proxyRunner) Log(msg string) {
 }
 
 // run starts the DNS proxy in the foreground.
-func run(profileID, overrideServer, overrideAPIServer, accountToken string) error {
+func Run(version, profileID, overrideServer, overrideAPIServer, accountToken string) error {
 	listenAddr := "127.0.0.1:53"
-	dohServer := resolveDoHServer(overrideServer)
-	apiServer := resolveAPIServer(overrideAPIServer, dohServer)
-	dohURL, dohHostname, dohPath, err := buildDoHTarget(dohServer, profileID)
+	dohServer := ResolveDoHServer(overrideServer)
+	apiServer := ResolveAPIServer(overrideAPIServer, dohServer)
+	dohURL, dohHostname, dohPath, err := BuildDoHTarget(dohServer, profileID)
 	if err != nil {
 		return err
 	}
@@ -155,27 +155,27 @@ func run(profileID, overrideServer, overrideAPIServer, accountToken string) erro
 	return nil
 }
 
-func resolveDoHServer(overrideServer string) string {
+func ResolveDoHServer(overrideServer string) string {
 	if overrideServer != "" {
 		return strings.TrimRight(overrideServer, "/")
 	}
 	if fromEnv := strings.TrimSpace(os.Getenv("UBLOCKDNS_DOH_SERVER")); fromEnv != "" {
 		return strings.TrimRight(fromEnv, "/")
 	}
-	return defaultDoHServer
+	return DefaultDoHServer
 }
 
-func resolveAPIServer(overrideServer, _ string) string {
+func ResolveAPIServer(overrideServer, _ string) string {
 	if overrideServer != "" {
 		return strings.TrimRight(overrideServer, "/")
 	}
 	if fromEnv := strings.TrimSpace(os.Getenv("UBLOCKDNS_API_SERVER")); fromEnv != "" {
 		return strings.TrimRight(fromEnv, "/")
 	}
-	return defaultAPIServer
+	return DefaultAPIServer
 }
 
-func buildDoHTarget(base, profileID string) (string, string, string, error) {
+func BuildDoHTarget(base, profileID string) (string, string, string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
 		return "", "", "", fmt.Errorf("invalid DoH server URL %q: %w", base, err)
@@ -183,7 +183,7 @@ func buildDoHTarget(base, profileID string) (string, string, string, error) {
 	if u.Scheme == "" || u.Host == "" {
 		return "", "", "", fmt.Errorf("invalid DoH server URL %q: expected absolute URL", base)
 	}
-	if err := validateProfileID(profileID); err != nil {
+	if err := ValidateProfileID(profileID); err != nil {
 		return "", "", "", err
 	}
 

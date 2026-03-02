@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"runtime"
+
+	"github.com/ugzv/ublockdnsclient/internal/app"
 )
 
 func usage() {
@@ -51,12 +53,12 @@ func main() {
 		dohServer := flagValue("-server")
 		apiServer := flagValue("-api-server")
 		token := flagValue("-token")
-		if err := validateProfileID(profileID); err != nil {
+		if err := app.ValidateProfileID(profileID); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Starting uBlockDNS in foreground...")
-		if err := run(profileID, dohServer, apiServer, token); err != nil {
+		if err := app.Run(version, profileID, dohServer, apiServer, token); err != nil {
 			log.Fatalf("Error: %v", err)
 		}
 
@@ -65,12 +67,12 @@ func main() {
 		dohServer := flagValue("-server")
 		apiServer := flagValue("-api-server")
 		token := flagValue("-token")
-		if err := validateProfileID(profileID); err != nil {
+		if err := app.ValidateProfileID(profileID); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Installing uBlockDNS service...")
-		if err := install(profileID, dohServer, apiServer, token); err != nil {
+		if err := app.Install(profileID, dohServer, apiServer, token); err != nil {
 			log.Fatalf("Install failed: %v", err)
 		}
 		fmt.Println("uBlockDNS installed and activated.")
@@ -78,27 +80,27 @@ func main() {
 
 	case "uninstall":
 		fmt.Println("Uninstalling uBlockDNS service...")
-		if err := uninstall(); err != nil {
+		if err := app.Uninstall(); err != nil {
 			log.Fatalf("Uninstall failed: %v", err)
 		}
 		fmt.Println("uBlockDNS uninstalled. DNS restored to defaults.")
 
 	case "start":
 		fmt.Println("Starting uBlockDNS service...")
-		if err := serviceStart(); err != nil {
+		if err := app.ServiceStart(); err != nil {
 			log.Fatalf("Start failed: %v", err)
 		}
 		fmt.Println("uBlockDNS started.")
 
 	case "stop":
 		fmt.Println("Stopping uBlockDNS service...")
-		if err := serviceStop(); err != nil {
+		if err := app.ServiceStop(); err != nil {
 			log.Fatalf("Stop failed: %v", err)
 		}
 		fmt.Println("uBlockDNS stopped.")
 
 	case "status":
-		showStatus()
+		app.ShowStatus()
 
 	default:
 		usage()

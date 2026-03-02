@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bufio"
@@ -220,7 +220,7 @@ func flushDNSCaches() error {
 }
 
 func tokenPath(profileID string) (string, error) {
-	if err := validateProfileID(profileID); err != nil {
+	if err := ValidateProfileID(profileID); err != nil {
 		return "", err
 	}
 	return filepath.Join(tokenDir(), profileID+".token"), nil

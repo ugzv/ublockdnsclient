@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 )
 
 // install sets up ublockdns as a system service.
-func install(profileID, dohServer, apiServer, accountToken string) error {
+func Install(profileID, dohServer, apiServer, accountToken string) error {
 	if !hasInstallPrivileges() {
 		return fmt.Errorf("install requires elevated privileges - %s", installPrivilegeHint())
 	}
@@ -60,7 +60,7 @@ func install(profileID, dohServer, apiServer, accountToken string) error {
 }
 
 // uninstall removes the system service and restores DNS.
-func uninstall() error {
+func Uninstall() error {
 	if err := host.ResetDNS(); err != nil {
 		log.Printf("Warning: could not reset DNS: %v", err)
 	}
@@ -80,7 +80,7 @@ func uninstall() error {
 	return nil
 }
 
-func serviceStart() error {
+func ServiceStart() error {
 	svc, err := newService("", "", "")
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func serviceStart() error {
 	return svc.Start()
 }
 
-func serviceStop() error {
+func ServiceStop() error {
 	svc, err := newService("", "", "")
 	if err != nil {
 		return err
@@ -96,7 +96,7 @@ func serviceStop() error {
 	return svc.Stop()
 }
 
-func showStatus() {
+func ShowStatus() {
 	dns := currentSystemDNS()
 	localDNS := hasDNS127001(dns)
 

@@ -1,11 +1,9 @@
-package main
-
-var version = "dev"
+package app
 
 const (
 	serviceName      = "ublockdns"
-	defaultDoHServer = "https://my.ublockdns.com"
-	defaultAPIServer = "https://ublockdns.com"
+	DefaultDoHServer = "https://my.ublockdns.com"
+	DefaultAPIServer = "https://ublockdns.com"
 )
 
 var bootstrapResolvers = []string{

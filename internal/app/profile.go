@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 var profileIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-func validateProfileID(profileID string) error {
+func ValidateProfileID(profileID string) error {
 	id := strings.TrimSpace(profileID)
 	if id == "" {
 		return fmt.Errorf("profile id is required")
