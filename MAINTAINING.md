@@ -14,7 +14,6 @@
    - `ublockdns-windows-amd64.exe`
    - `ublockdns-windows-arm64.exe`
    - `uBlockDNS-Setup-vX.Y.Z-windows-amd64.exe`
-   - `uBlockDNS-Setup-vX.Y.Z-windows-arm64.exe`
    - `ublockdns-freebsd-amd64`
    - `SHA256SUMS`
    - `install.sh`

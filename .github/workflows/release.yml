@@ -38,7 +38,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     strategy:
       matrix:
-        arch: [amd64, arm64]
+        arch: [amd64]
 
     steps:
       - name: Checkout
