@@ -53,12 +53,13 @@ func main() {
 		dohServer := flagValue("-server")
 		apiServer := flagValue("-api-server")
 		token := flagValue("-token")
-		if err := app.ValidateProfileID(profileID); err != nil {
+		normalizedProfileID, err := app.NormalizeProfileIDInput(profileID)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Starting uBlockDNS in foreground...")
-		if err := app.Run(version, profileID, dohServer, apiServer, token); err != nil {
+		if err := app.Run(version, normalizedProfileID, dohServer, apiServer, token); err != nil {
 			log.Fatalf("Error: %v", err)
 		}
 
@@ -67,16 +68,17 @@ func main() {
 		dohServer := flagValue("-server")
 		apiServer := flagValue("-api-server")
 		token := flagValue("-token")
-		if err := app.ValidateProfileID(profileID); err != nil {
+		normalizedProfileID, err := app.NormalizeProfileIDInput(profileID)
+		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Installing uBlockDNS service...")
-		if err := app.Install(profileID, dohServer, apiServer, token); err != nil {
+		if err := app.Install(normalizedProfileID, dohServer, apiServer, token); err != nil {
 			log.Fatalf("Install failed: %v", err)
 		}
 		fmt.Println("uBlockDNS installed and activated.")
-		fmt.Printf("All DNS queries now route through your profile: %s\n", profileID)
+		fmt.Printf("All DNS queries now route through your profile: %s\n", normalizedProfileID)
 
 	case "uninstall":
 		fmt.Println("Uninstalling uBlockDNS service...")

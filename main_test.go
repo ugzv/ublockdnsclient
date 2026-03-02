@@ -87,6 +87,59 @@ func TestValidateProfileID(t *testing.T) {
 	}
 }
 
+func TestNormalizeProfileIDInput(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+		err   bool
+	}{
+		{
+			name:  "plain id",
+			input: "mn1b8wig",
+			want:  "mn1b8wig",
+		},
+		{
+			name:  "profile url",
+			input: "https://my.ublockdns.com/mn1b8wig",
+			want:  "mn1b8wig",
+		},
+		{
+			name:  "profile url with slash and query",
+			input: "https://my.ublockdns.com/mn1b8wig/?ref=abc",
+			want:  "mn1b8wig",
+		},
+		{
+			name:  "url without id path",
+			input: "https://my.ublockdns.com/",
+			err:   true,
+		},
+		{
+			name:  "invalid extracted id",
+			input: "https://my.ublockdns.com/a%20b",
+			err:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := app.NormalizeProfileIDInput(tt.input)
+			if tt.err {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("want %q got %q", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestResolveDoHServer(t *testing.T) {
 	t.Setenv("UBLOCKDNS_DOH_SERVER", "")
 	if got := app.ResolveDoHServer(""); got != app.DefaultDoHServer {
