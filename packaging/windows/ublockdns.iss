@@ -40,8 +40,8 @@ OutputBaseFilename={#OutputBaseFilename}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesAllowed=x64compatible or arm64
-ArchitecturesInstallIn64BitMode=x64compatible or arm64
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 UninstallDisplayIcon={app}\\{#MyAppExeName}
 
