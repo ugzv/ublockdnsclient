@@ -6,7 +6,10 @@ param(
     [string]$AccountToken,
 
     [Parameter(Mandatory = $false)]
-    [string]$Version
+    [string]$Version,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$KeepOpen
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,8 +23,10 @@ function Test-Admin {
 if (-not (Test-Admin)) {
     Write-Host "Requesting administrator privileges ..."
     $args = @(
+        "-NoProfile",
         "-ExecutionPolicy", "Bypass",
-        "-File", ('"{0}"' -f $PSCommandPath)
+        "-File", ('"{0}"' -f $PSCommandPath),
+        "-KeepOpen"
     )
     if ($ProfileId) { $args += @("-ProfileId", ('"{0}"' -f $ProfileId)) }
     if ($AccountToken) { $args += @("-AccountToken", ('"{0}"' -f $AccountToken)) }
@@ -71,3 +76,15 @@ Write-Host ""
 Write-Host "Setup complete."
 Write-Host "Run this anytime to check status:"
 Write-Host "  $env:ProgramFiles\uBlockDNS\ublockdns.exe status"
+
+$statusExe = Join-Path $env:ProgramFiles "uBlockDNS\ublockdns.exe"
+if (Test-Path $statusExe) {
+    Write-Host ""
+    Write-Host "Current status:"
+    & $statusExe status
+}
+
+if ($KeepOpen) {
+    Write-Host ""
+    [void](Read-Host "Press Enter to close")
+}
