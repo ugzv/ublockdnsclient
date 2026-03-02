@@ -6,3 +6,4 @@ ublockdns-*
 *.test
 coverage.out
 .DS_Store
+.claude/
