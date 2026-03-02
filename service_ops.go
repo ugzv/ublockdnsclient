@@ -101,7 +101,11 @@ func showStatus() {
 	localDNS := hasDNS127001(dns)
 
 	svcState := "unknown"
-	if svc, err := newService("", "", ""); err == nil {
+	if runtime.GOOS == "windows" {
+		if st, ok := windowsServiceState(); ok {
+			svcState = st
+		}
+	} else if svc, err := newService("", "", ""); err == nil {
 		if st, err := svc.Status(); err == nil {
 			switch st {
 			case service.StatusRunning:
@@ -165,6 +169,13 @@ func currentSystemDNS() []string {
 			return dns
 		}
 	}
+	// On Windows, host.DNS() can return empty on some adapter setups.
+	// Prefer native adapter DNS query output when available.
+	if runtime.GOOS == "windows" {
+		if dns, err := dnsFromWindowsPowerShell(); err == nil && len(dns) > 0 {
+			return dns
+		}
+	}
 	return host.DNS()
 }
 
@@ -195,6 +206,58 @@ func dnsFromScutil() ([]string, error) {
 		dns = append(dns, ip)
 	}
 	return dns, nil
+}
+
+func dnsFromWindowsPowerShell() ([]string, error) {
+	out, err := exec.Command(
+		"powershell",
+		"-NoProfile",
+		"-NonInteractive",
+		"-Command",
+		`Get-DnsClientServerAddress -AddressFamily IPv4 | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ }`,
+	).Output()
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(out), "\n")
+	seen := map[string]struct{}{}
+	var dns []string
+	for _, line := range lines {
+		ip := strings.TrimSpace(line)
+		if ip == "" {
+			continue
+		}
+		if _, ok := seen[ip]; ok {
+			continue
+		}
+		seen[ip] = struct{}{}
+		dns = append(dns, ip)
+	}
+	return dns, nil
+}
+
+func windowsServiceState() (string, bool) {
+	out, err := exec.Command("sc.exe", "query", serviceName).CombinedOutput()
+	text := string(out)
+	if err != nil {
+		if strings.Contains(text, "FAILED 1060") {
+			return "not-installed", true
+		}
+		return "unknown", false
+	}
+
+	m := regexp.MustCompile(`STATE\s*:\s*(\d+)`).FindStringSubmatch(text)
+	if len(m) < 2 {
+		return "unknown", false
+	}
+	switch m[1] {
+	case "1":
+		return "stopped", true
+	case "4":
+		return "running", true
+	default:
+		return "unknown", true
+	}
 }
 
 func newService(profileID, dohServer, apiServer string) (service.Service, error) {
