@@ -65,17 +65,23 @@ jobs:
           }
 
       - name: Build GUI installer
+        shell: pwsh
+        run: |
+          Copy-Item "dist/ublockdns-windows-${{ matrix.arch }}.exe" "packaging/windows/ublockdns.exe" -Force
+          Copy-Item "dist/install.ps1" "packaging/windows/install.ps1" -Force
+          Copy-Item "dist/setup.ps1" "packaging/windows/setup.ps1" -Force
+
+      - name: Compile GUI installer
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.6
         with:
           path: packaging/windows/ublockdns.iss
-          options: >-
-            /DMyAppVersion=${{ github.ref_name }}
-            /DArch=${{ matrix.arch }}
-            /DSourceExe=dist\ublockdns-windows-${{ matrix.arch }}.exe
-            /DSourceInstallPs1=dist\install.ps1
-            /DSourceSetupPs1=dist\setup.ps1
-            /DOutputBaseFilename=uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}
-            /Oout
+          options: /DMyAppVersion=${{ github.ref_name }}
+
+      - name: Normalize GUI installer filename
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Move-Item "packaging/windows/uBlockDNS-Setup.exe" "out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe" -Force
 
       - name: Upload GUI installer to release
         uses: softprops/action-gh-release@v2
