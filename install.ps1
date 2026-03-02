@@ -53,6 +53,38 @@ $url = $assetInfo.browser_download_url
 $installDir = Join-Path $env:ProgramFiles "uBlockDNS"
 $exePath = Join-Path $installDir "$binary.exe"
 $tempExe = Join-Path $env:TEMP "$binary.$([Guid]::NewGuid().ToString('N')).exe"
+$serviceName = "ublockdns"
+
+function Stop-ExistingInstall {
+    param(
+        [string]$ExePath,
+        [string]$BinaryName
+    )
+
+    if (-not (Test-Path $ExePath)) {
+        return
+    }
+
+    Write-Host "Existing installation detected, stopping previous service ..."
+    try {
+        & $ExePath uninstall
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Previous uninstall returned exit code $LASTEXITCODE. Continuing with best-effort cleanup."
+        }
+    } catch {
+        Write-Warning "Previous uninstall failed: $($_.Exception.Message). Continuing with best-effort cleanup."
+    }
+
+    $deadline = (Get-Date).AddSeconds(20)
+    do {
+        $proc = Get-Process -Name $BinaryName -ErrorAction SilentlyContinue
+        if ($null -eq $proc) {
+            break
+        }
+        try { $proc | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+}
 
 Write-Host "Installing uBlock DNS client"
 Write-Host "  Version: $Version"
@@ -80,7 +112,25 @@ if (-not $downloaded) {
     throw "Download failed for $url"
 }
 
-Move-Item -Path $tempExe -Destination $exePath -Force
+Stop-ExistingInstall -ExePath $exePath -BinaryName $binary
+
+$replaced = $false
+for ($attempt = 1; $attempt -le 5; $attempt++) {
+    try {
+        Copy-Item -Path $tempExe -Destination $exePath -Force
+        Remove-Item -Path $tempExe -Force -ErrorAction SilentlyContinue
+        $replaced = $true
+        break
+    } catch {
+        if ($attempt -eq 5) {
+            throw "Could not replace '$exePath' after $attempt attempts. Ensure ublockdns.exe is not running. Last error: $($_.Exception.Message)"
+        }
+        Start-Sleep -Seconds 1
+    }
+}
+if (-not $replaced) {
+    throw "Failed to install binary at '$exePath'."
+}
 
 $installArgs = @("install", "-profile", $ProfileId)
 if ($AccountToken) {
@@ -93,7 +143,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "Service installation failed with exit code $LASTEXITCODE."
 }
 
-$serviceName = "ublockdns"
 $serviceReady = $false
 $deadline = (Get-Date).AddSeconds(45)
 do {

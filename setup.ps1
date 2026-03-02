@@ -85,9 +85,26 @@ try {
     $installerPath = Join-Path $repoRoot "install.ps1"
 
     if (-not (Test-Path $installerPath)) {
-        Write-Host "Downloading install.ps1 from GitHub ..."
-        $installerUrl = "https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1"
-        Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+        $installerUrls = @()
+        if ($Version) {
+            $installerUrls += "https://github.com/ugzv/ublockdnsclient/releases/download/$Version/install.ps1"
+        }
+        $installerUrls += "https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1"
+
+        $downloadedInstaller = $false
+        foreach ($installerUrl in $installerUrls) {
+            try {
+                Write-Host "Downloading install.ps1 from $installerUrl ..."
+                Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+                $downloadedInstaller = $true
+                break
+            } catch {
+                Write-Warning "Failed to download install.ps1 from $installerUrl"
+            }
+        }
+        if (-not $downloadedInstaller) {
+            throw "Could not download install.ps1."
+        }
     }
 
     $installArgs = @("-ProfileId", $ProfileId)
