@@ -64,11 +64,14 @@ try {
 } catch {}
 
 try {
-    Write-Host "uBlock DNS Setup (Windows)"
+    Write-Host "uBlockDNS Setup (Windows)"
     Write-Host "---------------------------"
+    if ($Version) {
+        Write-Host "Requested version: $Version"
+    }
 
     if (-not $ProfileId) {
-        $ProfileId = Read-Host "Enter your uBlock DNS profile ID"
+        $ProfileId = Read-Host "Enter your uBlockDNS profile ID"
     }
     if (-not $ProfileId) {
         throw "Profile ID is required."
@@ -120,7 +123,7 @@ try {
     Write-Host ""
     Write-Host "Setup complete."
     Write-Host "Run this anytime to check status:"
-    Write-Host "  $env:ProgramFiles\uBlockDNS\ublockdns.exe status"
+    Write-Host "  & `"$env:ProgramFiles\uBlockDNS\ublockdns.exe`" status"
 
     $statusExe = Join-Path $env:ProgramFiles "uBlockDNS\ublockdns.exe"
     if (Test-Path $statusExe) {

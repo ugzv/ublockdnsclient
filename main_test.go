@@ -75,7 +75,7 @@ func TestValidateProfileID(t *testing.T) {
 		}
 	}
 
-	invalid := []string{"", " ", "abc/123", "../evil", "a b"}
+	invalid := []string{"", " ", "abc/123", "../evil", "a b", "-token"}
 	for _, id := range invalid {
 		if err := validateProfileID(id); err == nil {
 			t.Fatalf("expected invalid profile id %q to fail validation", id)

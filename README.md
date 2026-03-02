@@ -1,8 +1,8 @@
-# uBlock DNS Client
+# uBlockDNS Client
 
 [![CI](https://github.com/ugzv/ublockdnsclient/actions/workflows/ci.yml/badge.svg)](https://github.com/ugzv/ublockdnsclient/actions/workflows/ci.yml)
 
-Cross-platform CLI client for uBlock DNS.
+Cross-platform CLI client for uBlockDNS.
 
 ## Install
 
@@ -29,7 +29,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 Windows GUI installer (`.exe` wizard):
 - Download from the latest release assets:
   - `uBlockDNS-Setup-<version>-windows-amd64.exe`
-- Run installer, then check "Run guided setup now" at the final step.
+- Run installer, then keep "Run guided setup now (recommended)" checked at the final step.
 
 Prebuilt binaries currently target:
 - `linux/amd64`
@@ -51,11 +51,11 @@ sudo ./ublockdns install -profile <profile-id>
 ## Usage
 
 ```text
-ublockdns install   -profile <id>
+ublockdns install   -profile <profile-id>
 ublockdns uninstall
 ublockdns start
 ublockdns stop
-ublockdns run       -profile <id>
+ublockdns run       -profile <profile-id>
 ublockdns status
 ublockdns version
 ```
@@ -63,7 +63,7 @@ ublockdns version
 Optional overrides:
 - `-server <url>` on `install` / `run` for development DoH endpoints.
 - `-api-server <url>` on `install` / `run` for development API endpoints.
-- `-token <account-key>` on `install` / `run` to enable instant rules-update signal handling and automatic local DNS cache flush.
+- `-token <account-token>` on `install` / `run` to enable instant rules-update signal handling and automatic local DNS cache flush.
 - `UBLOCKDNS_DOH_SERVER` environment variable for global override.
 - `UBLOCKDNS_API_SERVER` environment variable for API override.
 - `UBLOCKDNS_ACCOUNT_TOKEN` environment variable for runtime token (when not passed by flag).
@@ -72,7 +72,7 @@ Optional overrides:
 
 When a token is available, the client subscribes to backend rules-update events and flushes local DNS cache automatically after list or custom-rule changes.
 
-- On `install -token <account-key>`, token is stored in a restricted file and loaded at runtime:
+- On `install -token <account-token>`, token is stored in a restricted file and loaded at runtime:
   - Unix: `/etc/ublockdns/<profile>.token` (mode `0600`)
   - Windows: `%ProgramData%\\ublockdns\\<profile>.token`
 - Token is not printed in logs.

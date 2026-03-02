@@ -13,6 +13,9 @@ func validateProfileID(profileID string) error {
 	if id == "" {
 		return fmt.Errorf("profile id is required")
 	}
+	if strings.HasPrefix(id, "-") {
+		return fmt.Errorf("invalid profile id %q: profile id cannot start with '-'", profileID)
+	}
 	if !profileIDPattern.MatchString(id) {
 		return fmt.Errorf("invalid profile id %q: only letters, digits, '-' and '_' are allowed", profileID)
 	}

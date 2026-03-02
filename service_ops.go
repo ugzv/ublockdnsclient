@@ -137,7 +137,7 @@ func showStatus() {
 	if len(dns) == 0 {
 		fmt.Println("System DNS: (none)")
 	} else if localDNS {
-		fmt.Printf("System DNS: %s (includes 127.0.0.1 via uBlock DNS)\n", strings.Join(dns, ", "))
+		fmt.Printf("System DNS: %s (includes 127.0.0.1 via uBlockDNS)\n", strings.Join(dns, ", "))
 	} else {
 		fmt.Printf("System DNS: %s\n", strings.Join(dns, ", "))
 	}
@@ -274,7 +274,7 @@ func newService(profileID, dohServer, apiServer string) (service.Service, error)
 
 	return host.NewService(service.Config{
 		Name:        serviceName,
-		DisplayName: "uBlock DNS",
+		DisplayName: "uBlockDNS",
 		Description: "DNS-level ad blocker - routes DNS through ublockdns.com",
 		Arguments:   args,
 	})

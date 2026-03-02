@@ -84,7 +84,7 @@ func run(profileID, overrideServer, overrideAPIServer, accountToken string) erro
 		return err
 	}
 
-	log.Printf("uBlock DNS CLI v%s", version)
+	log.Printf("uBlockDNS CLI v%s", version)
 	log.Printf("Profile: %s", profileID)
 	log.Printf("DoH upstream: %s", dohURL)
 	log.Printf("API server: %s", apiServer)

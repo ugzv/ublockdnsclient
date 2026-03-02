@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-# uBlock DNS CLI installer
-# Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-key]
+# uBlockDNS installer
+# Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-token]
 
 REPO="ugzv/ublockdnsclient"
 BINARY="ublockdns"
@@ -58,6 +58,32 @@ cleanup() {
     fi
 }
 
+download_binary() {
+    attempts=3
+    i=1
+    while [ "$i" -le "$attempts" ]; do
+        info "Download attempt ${i}/${attempts}..."
+        if command -v curl >/dev/null 2>&1; then
+            if curl -fsSL --connect-timeout 10 "$URL" -o "$TMP_BIN"; then
+                return 0
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -qO "$TMP_BIN" "$URL"; then
+                return 0
+            fi
+        else
+            error "curl or wget required"
+            return 1
+        fi
+        if [ "$i" -lt "$attempts" ]; then
+            info "Download failed, retrying in 2s..."
+            sleep 2
+        fi
+        i=$((i + 1))
+    done
+    return 1
+}
+
 validate_dns() {
     if command -v dig >/dev/null 2>&1; then
         dig @127.0.0.1 example.com +short +time=3 +tries=1 >/dev/null 2>&1
@@ -76,7 +102,9 @@ wait_for_dns_ready() {
     attempts=20
     i=1
     while [ "$i" -le "$attempts" ]; do
+        info "Checking local DNS proxy readiness (${i}/${attempts})..."
         if validate_dns; then
+            info "Local DNS proxy is responding."
             return 0
         fi
         sleep 1
@@ -93,7 +121,7 @@ main() {
     PROFILE_ID="${1:-}"
     ACCOUNT_TOKEN="${2:-}"
     if [ -z "$PROFILE_ID" ]; then
-        error "Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-key]"
+        error "Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-token]"
         printf "\n"
         info "Get your profile ID at https://ublockdns.com"
         exit 1
@@ -127,14 +155,14 @@ main() {
     fi
 
     printf "\n"
-    printf "${BOLD}${CYAN}uBlock DNS CLI Installer${RESET}\n"
+    printf "${BOLD}${CYAN}uBlockDNS Installer${RESET}\n"
     printf "${DIM}========================${RESET}\n"
     printf " ${BOLD}Version${RESET} : %s\n" "$TAG"
     printf " ${BOLD}OS${RESET}      : %s\n" "$OS"
     printf " ${BOLD}Arch${RESET}    : %s\n" "$ARCH"
     printf " ${BOLD}Profile${RESET} : %s\n" "$PROFILE_ID"
     if [ -n "$ACCOUNT_TOKEN" ]; then
-        printf " ${BOLD}Rules push${RESET}: enabled\n"
+        printf " ${BOLD}Account token${RESET}: provided (instant rules updates enabled)\n"
     fi
     if [ -n "$EXISTING" ]; then
         CURRENT_VER=$(${INSTALL_DIR}/${BINARY} version 2>/dev/null | head -1 || echo "unknown")
@@ -145,12 +173,8 @@ main() {
     # Download FIRST while DNS still works (existing service may be serving DNS)
     info "Downloading ${BINARY}..."
     TMP_BIN="$(mktemp "/tmp/${BINARY}.XXXXXX")"
-    if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 3 --connect-timeout 10 "$URL" -o "$TMP_BIN"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$TMP_BIN" "$URL"
-    else
-        error "curl or wget required"
+    if ! download_binary; then
+        error "Download failed for ${URL}"
         exit 1
     fi
     chmod +x "$TMP_BIN"
@@ -184,7 +208,7 @@ main() {
 
     info "Waiting for local DNS proxy to become ready..."
     if ! wait_for_dns_ready; then
-        error "DNS validation timed out — the service may still be starting."
+        error "DNS validation timed out - the service may still be starting."
         printf "  Check with: ${BOLD}ublockdns status${RESET}\n"
         printf "  If broken:  ${BOLD}sudo ublockdns uninstall${RESET}\n"
         printf "\n"
@@ -193,10 +217,11 @@ main() {
 
     printf "\n"
     if [ -n "$EXISTING" ]; then
-        success "Done! uBlock DNS reinstalled with profile ${PROFILE_ID}."
+        success "Done! uBlockDNS reinstalled with profile ${PROFILE_ID}."
     else
-        success "Done! uBlock DNS is now active."
+        success "Done! uBlockDNS is now active."
     fi
+    printf "  ${BOLD}Next:${RESET}      Protection is active. Run a status check.\n"
     printf "  ${BOLD}Status:${RESET}    ublockdns status\n"
     printf "  ${BOLD}Uninstall:${RESET} sudo ublockdns uninstall\n"
     printf "\n"

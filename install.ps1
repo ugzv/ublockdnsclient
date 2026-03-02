@@ -86,16 +86,20 @@ function Stop-ExistingInstall {
     } while ((Get-Date) -lt $deadline)
 }
 
-Write-Host "Installing uBlock DNS client"
+Write-Host "Installing uBlockDNS"
 Write-Host "  Version: $Version"
 Write-Host "  Arch:    $arch"
 Write-Host "  Asset:   $asset"
+if ($AccountToken) {
+    Write-Host "  Account token: provided (instant rules updates enabled)"
+}
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 
 Write-Host "Downloading $url ..."
 $downloaded = $false
 for ($attempt = 1; $attempt -le 3; $attempt++) {
+    Write-Host "Download attempt $attempt/3 ..."
     try {
         Invoke-WebRequest -Uri $url -OutFile $tempExe
         $downloaded = $true
@@ -116,6 +120,9 @@ Stop-ExistingInstall -ExePath $exePath -BinaryName $binary
 
 $replaced = $false
 for ($attempt = 1; $attempt -le 5; $attempt++) {
+    if ($attempt -gt 1) {
+        Write-Host "Retrying binary replacement ($attempt/5) ..."
+    }
     try {
         Copy-Item -Path $tempExe -Destination $exePath -Force
         Remove-Item -Path $tempExe -Force -ErrorAction SilentlyContinue
@@ -144,8 +151,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $serviceReady = $false
-$deadline = (Get-Date).AddSeconds(45)
-do {
+$svc = $null
+$maxChecks = 45
+for ($check = 1; $check -le $maxChecks; $check++) {
     $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if ($null -ne $svc) {
         if ($svc.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running) {
@@ -156,8 +164,11 @@ do {
             break
         }
     }
+    if ($check -eq 1 -or ($check % 5 -eq 0)) {
+        Write-Host "Waiting for service to reach Running state ($check/$maxChecks) ..."
+    }
     Start-Sleep -Seconds 1
-} while ((Get-Date) -lt $deadline)
+}
 
 if (-not $serviceReady) {
     $lastStatus = if ($null -eq $svc) { "not-installed" } else { $svc.Status.ToString() }
@@ -165,5 +176,6 @@ if (-not $serviceReady) {
 }
 
 Write-Host "Done."
-Write-Host "  Status:    $exePath status"
-Write-Host "  Uninstall: $exePath uninstall"
+Write-Host "  Next:      Protection is active. Run a status check."
+Write-Host ("  Status:    & `"{0}`" status" -f $exePath)
+Write-Host ("  Uninstall: & `"{0}`" uninstall" -f $exePath)

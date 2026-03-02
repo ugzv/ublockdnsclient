@@ -1,5 +1,5 @@
-#define MyAppName "uBlock DNS"
-#define MyAppPublisher "uBlock DNS"
+#define MyAppName "uBlockDNS"
+#define MyAppPublisher "uBlockDNS"
 #define MyAppExeName "ublockdns.exe"
 
 #ifndef MyAppVersion
@@ -32,7 +32,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\\uBlockDNS
-DefaultGroupName=uBlock DNS
+DefaultGroupName=uBlockDNS
 DisableDirPage=yes
 DisableProgramGroupPage=yes
 OutputDir=.
@@ -54,9 +54,9 @@ Source: "{#SourceInstallPs1}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceSetupPs1}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\\uBlock DNS\\uBlock DNS Status"; Filename: "{app}\\{#MyAppExeName}"; Parameters: "status"
-Name: "{autoprograms}\\uBlock DNS\\uBlock DNS Guided Setup"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\\setup.ps1"""
-Name: "{autoprograms}\\uBlock DNS\\Uninstall uBlock DNS"; Filename: "{uninstallexe}"
+Name: "{autoprograms}\\uBlockDNS\\uBlockDNS Status"; Filename: "{app}\\{#MyAppExeName}"; Parameters: "status"
+Name: "{autoprograms}\\uBlockDNS\\uBlockDNS Guided Setup"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\\setup.ps1"" -Version ""{#MyAppVersion}"""
+Name: "{autoprograms}\\uBlockDNS\\Uninstall uBlockDNS"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\\setup.ps1"""; Description: "Run guided setup now"; Flags: postinstall skipifsilent unchecked
+Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\\setup.ps1"" -Version ""{#MyAppVersion}"""; Description: "Run guided setup now (recommended)"; Flags: postinstall skipifsilent
