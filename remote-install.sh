@@ -2,7 +2,7 @@
 set -e
 
 # uBlock DNS CLI installer
-# Usage: curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>
+# Usage: curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id> [account-key]
 
 REPO="ugzv/ublockdnsclient"
 BINARY="ublockdns"
@@ -91,8 +91,9 @@ main() {
     setup_color
 
     PROFILE_ID="${1:-}"
+    ACCOUNT_TOKEN="${2:-}"
     if [ -z "$PROFILE_ID" ]; then
-        error "Usage: curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>"
+        error "Usage: curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id> [account-key]"
         printf "\n"
         info "Get your profile ID at https://ublockdns.com"
         exit 1
@@ -115,7 +116,7 @@ main() {
 
     TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
     if [ -z "$TAG" ]; then
-        TAG="v0.1.12"
+        TAG="v0.1.13"
     fi
     URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}-${OS}-${ARCH}"
 
@@ -132,6 +133,9 @@ main() {
     printf " ${BOLD}OS${RESET}      : %s\n" "$OS"
     printf " ${BOLD}Arch${RESET}    : %s\n" "$ARCH"
     printf " ${BOLD}Profile${RESET} : %s\n" "$PROFILE_ID"
+    if [ -n "$ACCOUNT_TOKEN" ]; then
+        printf " ${BOLD}Rules push${RESET}: enabled\n"
+    fi
     if [ -n "$EXISTING" ]; then
         CURRENT_VER=$(${INSTALL_DIR}/${BINARY} version 2>/dev/null | head -1 || echo "unknown")
         printf " ${BOLD}Current${RESET} : %s (reinstalling)\n" "$CURRENT_VER"
@@ -162,7 +166,15 @@ main() {
     TMP_BIN=""
 
     info "Setting up system service..."
-    if ! run_as_root "${INSTALL_DIR}/${BINARY}" install -profile "$PROFILE_ID"; then
+    if [ -n "$ACCOUNT_TOKEN" ]; then
+        if ! run_as_root "${INSTALL_DIR}/${BINARY}" install -profile "$PROFILE_ID" -token "$ACCOUNT_TOKEN"; then
+            error "Service install failed."
+            if [ -n "$EXISTING" ]; then
+                printf "${YELLOW}  Tip: try 'sudo ublockdns uninstall' then re-run the installer.${RESET}\n"
+            fi
+            exit 1
+        fi
+    elif ! run_as_root "${INSTALL_DIR}/${BINARY}" install -profile "$PROFILE_ID"; then
         error "Service install failed."
         if [ -n "$EXISTING" ]; then
             printf "${YELLOW}  Tip: try 'sudo ublockdns uninstall' then re-run the installer.${RESET}\n"

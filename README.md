@@ -35,7 +35,19 @@ ublockdns version
 
 Optional overrides:
 - `-server <url>` on `install` / `run` for development DoH endpoints.
+- `-api-server <url>` on `install` / `run` for development API endpoints.
+- `-token <account-key>` on `install` / `run` to enable instant rules-update signal handling and automatic local DNS cache flush.
 - `UBLOCKDNS_DOH_SERVER` environment variable for global override.
+- `UBLOCKDNS_API_SERVER` environment variable for API override.
+- `UBLOCKDNS_ACCOUNT_TOKEN` environment variable for runtime token (when not passed by flag).
+
+## Instant Rule Updates
+
+When a token is available, the client subscribes to backend rules-update events and flushes local DNS cache automatically after list or custom-rule changes.
+
+- On `install -token <account-key>`, token is stored as root-only file (`/etc/ublockdns/<profile>.token`, mode `0600`) and loaded at runtime.
+- Token is not printed in logs.
+- Service arguments do not include token material.
 
 ## Development
 

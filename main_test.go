@@ -76,3 +76,19 @@ func TestResolveDoHServer(t *testing.T) {
 		t.Fatalf("expected flag override, got %q", got)
 	}
 }
+
+func TestResolveAPIServer(t *testing.T) {
+	t.Setenv("UBLOCKDNS_API_SERVER", "")
+	if got := resolveAPIServer("", defaultDoHServer); got != defaultAPIServer {
+		t.Fatalf("expected default API server %q, got %q", defaultAPIServer, got)
+	}
+
+	t.Setenv("UBLOCKDNS_API_SERVER", "https://api-env.example.com/")
+	if got := resolveAPIServer("", defaultDoHServer); got != "https://api-env.example.com" {
+		t.Fatalf("expected env API override, got %q", got)
+	}
+
+	if got := resolveAPIServer("https://api-flag.example.com/", defaultDoHServer); got != "https://api-flag.example.com" {
+		t.Fatalf("expected flag API override, got %q", got)
+	}
+}
