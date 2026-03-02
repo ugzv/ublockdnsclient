@@ -2,7 +2,7 @@
 set -e
 
 # uBlock DNS CLI installer
-# Usage: curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id> [account-key]
+# Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-key]
 
 REPO="ugzv/ublockdnsclient"
 BINARY="ublockdns"
@@ -93,7 +93,7 @@ main() {
     PROFILE_ID="${1:-}"
     ACCOUNT_TOKEN="${2:-}"
     if [ -z "$PROFILE_ID" ]; then
-        error "Usage: curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id> [account-key]"
+        error "Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-key]"
         printf "\n"
         info "Get your profile ID at https://ublockdns.com"
         exit 1

@@ -1,0 +1,58 @@
+version: 2
+
+project_name: ublockdns
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: cross
+    main: .
+    binary: ublockdns
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - freebsd
+    goarch:
+      - amd64
+      - arm64
+
+  - id: linux-armv7
+    main: .
+    binary: ublockdns
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm
+    goarm:
+      - "7"
+
+  - id: darwin
+    main: .
+    binary: ublockdns
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: binaries
+    formats: [binary]
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+
+checksum:
+  name_template: SHA256SUMS
+
+release:
+  prerelease: auto
+  extra_files:
+    - glob: install.sh
+    - glob: install.ps1

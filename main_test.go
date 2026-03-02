@@ -34,6 +34,12 @@ func TestBuildDoHTarget(t *testing.T) {
 			profileID: "abc123",
 			wantErr:   true,
 		},
+		{
+			name:      "invalid profile id",
+			base:      "https://my.ublockdns.com",
+			profileID: "../etc/passwd",
+			wantErr:   true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -58,6 +64,22 @@ func TestBuildDoHTarget(t *testing.T) {
 				t.Fatalf("path mismatch: want %q got %q", tt.wantPath, gotPath)
 			}
 		})
+	}
+}
+
+func TestValidateProfileID(t *testing.T) {
+	valid := []string{"abc123", "ABC_123", "profile-id"}
+	for _, id := range valid {
+		if err := validateProfileID(id); err != nil {
+			t.Fatalf("expected valid profile id %q, got error: %v", id, err)
+		}
+	}
+
+	invalid := []string{"", " ", "abc/123", "../evil", "a b"}
+	for _, id := range invalid {
+		if err := validateProfileID(id); err == nil {
+			t.Fatalf("expected invalid profile id %q to fail validation", id)
+		}
 	}
 }
 

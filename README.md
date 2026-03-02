@@ -6,13 +6,28 @@ Cross-platform CLI client for uBlock DNS.
 
 ## Install
 
-Use the hosted installer:
+Use the installer from GitHub (macOS/Linux):
 
 ```sh
-curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>
+curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id>
 ```
 
-Supports macOS and Linux (`amd64`, `arm64`).
+Windows (PowerShell, Administrator):
+
+```powershell
+iwr https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
+```
+
+Prebuilt binaries currently target:
+- `linux/amd64`
+- `linux/arm64`
+- `linux/arm/v7`
+- `darwin/amd64`
+- `darwin/arm64`
+- `windows/amd64`
+- `windows/arm64`
+- `freebsd/amd64`
 
 Or build locally:
 
@@ -45,7 +60,9 @@ Optional overrides:
 
 When a token is available, the client subscribes to backend rules-update events and flushes local DNS cache automatically after list or custom-rule changes.
 
-- On `install -token <account-key>`, token is stored as root-only file (`/etc/ublockdns/<profile>.token`, mode `0600`) and loaded at runtime.
+- On `install -token <account-key>`, token is stored in a restricted file and loaded at runtime:
+  - Unix: `/etc/ublockdns/<profile>.token` (mode `0600`)
+  - Windows: `%ProgramData%\\ublockdns\\<profile>.token`
 - Token is not printed in logs.
 - Service arguments do not include token material.
 
@@ -70,12 +87,8 @@ Release builds (local):
 ## Releases
 
 - Tag a commit as `vX.Y.Z`.
-- GitHub Actions builds binaries for:
-  - `linux/amd64`
-  - `linux/arm64`
-  - `darwin/amd64`
-  - `darwin/arm64`
-- Assets are uploaded as `ublockdns-<os>-<arch>` plus `SHA256SUMS`.
+- GitHub Actions uses GoReleaser to build and publish release assets.
+- Assets are uploaded as `ublockdns-<os>-<arch>` (or `...-armv7`) plus `SHA256SUMS`, along with installer scripts (`install.sh`, `install.ps1`).
 
 ## Security
 

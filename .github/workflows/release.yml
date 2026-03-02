@@ -3,100 +3,31 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goarch: [amd64, arm64]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build binary
-        env:
-          GOOS: linux
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
-          VERSION: ${{ github.ref_name }}
-        run: |
-          mkdir -p dist
-          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-            -o "dist/ublockdns-linux-${GOARCH}" .
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ublockdns-linux-${{ matrix.goarch }}
-          path: dist/ublockdns-linux-${{ matrix.goarch }}
-
-  build-darwin:
+  goreleaser:
     runs-on: macos-latest
-    strategy:
-      matrix:
-        goarch: [amd64, arm64]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Build binary
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean' || 'build --snapshot --clean' }}
         env:
-          GOOS: darwin
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 1
-          VERSION: ${{ github.ref_name }}
-        run: |
-          mkdir -p dist
-          go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
-            -o "dist/ublockdns-darwin-${GOARCH}" .
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ublockdns-darwin-${{ matrix.goarch }}
-          path: dist/ublockdns-darwin-${{ matrix.goarch }}
-
-  publish:
-    needs: [build-linux, build-darwin]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: Flatten artifacts
-        run: |
-          mkdir -p out
-          find dist -type f -name 'ublockdns-*' -exec cp {} out/ \;
-          (cd out && sha256sum ublockdns-* > SHA256SUMS)
-
-      - name: Publish release assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            out/ublockdns-linux-amd64
-            out/ublockdns-linux-arm64
-            out/ublockdns-darwin-amd64
-            out/ublockdns-darwin-arm64
-            out/SHA256SUMS
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
