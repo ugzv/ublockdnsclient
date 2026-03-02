@@ -26,6 +26,12 @@ iwr https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/setup.ps1 -OutFi
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
+Windows GUI installer (`.exe` wizard):
+- Download from the latest release assets:
+  - `uBlockDNS-Setup-<version>-windows-amd64.exe`
+  - `uBlockDNS-Setup-<version>-windows-arm64.exe`
+- Run installer, then check "Run guided setup now" at the final step.
+
 Prebuilt binaries currently target:
 - `linux/amd64`
 - `linux/arm64`

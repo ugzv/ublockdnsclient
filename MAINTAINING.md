@@ -13,10 +13,13 @@
    - `ublockdns-darwin-arm64`
    - `ublockdns-windows-amd64.exe`
    - `ublockdns-windows-arm64.exe`
+   - `uBlockDNS-Setup-vX.Y.Z-windows-amd64.exe`
+   - `uBlockDNS-Setup-vX.Y.Z-windows-arm64.exe`
    - `ublockdns-freebsd-amd64`
    - `SHA256SUMS`
    - `install.sh`
    - `install.ps1`
+   - `setup.ps1`
 5. Smoke test installers:
    - Unix: `curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id>`
    - Windows (Admin PowerShell):
