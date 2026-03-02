@@ -64,28 +64,18 @@ jobs:
             Invoke-WebRequest -Uri $url -OutFile (Join-Path dist $asset)
           }
 
-      - name: Install Inno Setup
-        shell: pwsh
-        run: choco install innosetup --no-progress -y
-
       - name: Build GUI installer
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path out | Out-Null
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          $tag = "${{ github.ref_name }}"
-          $arch = "${{ matrix.arch }}"
-          $output = "uBlockDNS-Setup-$tag-windows-$arch"
-
-          & $iscc `
-            "/DMyAppVersion=$tag" `
-            "/DArch=$arch" `
-            "/DSourceExe=dist\\ublockdns-windows-$arch.exe" `
-            "/DSourceInstallPs1=dist\\install.ps1" `
-            "/DSourceSetupPs1=dist\\setup.ps1" `
-            "/DOutputBaseFilename=$output" `
-            "/Oout" `
-            "packaging\\windows\\ublockdns.iss"
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.6
+        with:
+          path: packaging/windows/ublockdns.iss
+          options: >-
+            /DMyAppVersion=${{ github.ref_name }}
+            /DArch=${{ matrix.arch }}
+            /DSourceExe=dist\ublockdns-windows-${{ matrix.arch }}.exe
+            /DSourceInstallPs1=dist\install.ps1
+            /DSourceSetupPs1=dist\setup.ps1
+            /DOutputBaseFilename=uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}
+            /Oout
 
       - name: Upload GUI installer to release
         uses: softprops/action-gh-release@v2
