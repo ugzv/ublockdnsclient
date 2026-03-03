@@ -2,7 +2,7 @@
 set -e
 
 # uBlockDNS installer
-# Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-token]
+# Usage: curl -sSf https://github.com/ugzv/ublockdnsclient/releases/latest/download/install.sh | sh -s -- <profile-id> [account-token]
 
 REPO="ugzv/ublockdnsclient"
 BINARY="ublockdns"
@@ -121,7 +121,7 @@ main() {
     PROFILE_ID="${1:-}"
     ACCOUNT_TOKEN="${2:-}"
     if [ -z "$PROFILE_ID" ]; then
-        error "Usage: curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id> [account-token]"
+        error "Usage: curl -sSf https://github.com/ugzv/ublockdnsclient/releases/latest/download/install.sh | sh -s -- <profile-id> [account-token]"
         printf "\n"
         info "Get your profile ID at https://ublockdns.com"
         exit 1
@@ -143,10 +143,12 @@ main() {
     esac
 
     TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name"' | head -1 | cut -d'"' -f4)
-    if [ -z "$TAG" ]; then
-        TAG="v0.1.13"
+    if [ -n "$TAG" ]; then
+        URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}-${OS}-${ARCH}"
+    else
+        TAG="latest"
+        URL="https://github.com/${REPO}/releases/latest/download/${BINARY}-${OS}-${ARCH}"
     fi
-    URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}-${OS}-${ARCH}"
 
     # Detect existing installation
     EXISTING=""

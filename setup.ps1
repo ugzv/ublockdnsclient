@@ -92,7 +92,7 @@ try {
         if ($Version) {
             $installerUrls += "https://github.com/ugzv/ublockdnsclient/releases/download/$Version/install.ps1"
         }
-        $installerUrls += "https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1"
+        $installerUrls += "https://github.com/ugzv/ublockdnsclient/releases/latest/download/install.ps1"
 
         $downloadedInstaller = $false
         foreach ($installerUrl in $installerUrls) {

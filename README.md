@@ -9,20 +9,20 @@ Cross-platform CLI client for uBlockDNS.
 Use the installer from GitHub (macOS/Linux):
 
 ```sh
-curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id>
+curl -sSf https://github.com/ugzv/ublockdnsclient/releases/latest/download/install.sh | sh -s -- <profile-id>
 ```
 
 Windows (PowerShell, Administrator):
 
 ```powershell
-iwr https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1 -OutFile install.ps1
+iwr https://github.com/ugzv/ublockdnsclient/releases/latest/download/install.ps1 -OutFile install.ps1
 powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 ```
 
 Beginner-friendly guided setup (auto-elevates and prompts for values):
 
 ```powershell
-iwr https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/setup.ps1 -OutFile setup.ps1
+iwr https://github.com/ugzv/ublockdnsclient/releases/latest/download/setup.ps1 -OutFile setup.ps1
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
