@@ -17,8 +17,8 @@ func flushDNSCaches() error {
 	switch runtime.GOOS {
 	case "darwin":
 		commands = []cmdSpec{
-			{name: "dscacheutil", args: []string{"-flushcache"}},
 			{name: "killall", args: []string{"-HUP", "mDNSResponder"}},
+			{name: "dscacheutil", args: []string{"-flushcache"}},
 		}
 	case "linux":
 		commands = []cmdSpec{
@@ -35,15 +35,11 @@ func flushDNSCaches() error {
 	}
 
 	var errs []string
-	success := false
 	for _, c := range commands {
 		if err := runCommand(c.name, c.args...); err != nil {
 			errs = append(errs, fmt.Sprintf("%s %s: %v", c.name, strings.Join(c.args, " "), err))
 			continue
 		}
-		success = true
-	}
-	if success {
 		return nil
 	}
 	if len(errs) == 0 {

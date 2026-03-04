@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/nextdns/nextdns/host/service"
 	"github.com/nextdns/nextdns/proxy"
 	"github.com/nextdns/nextdns/resolver"
@@ -103,11 +104,20 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 
 	mgr := newEndpointManager(dohEndpoint)
 
+	// Client-side DNS response cache. Avoids upstream round-trips for
+	// frequently queried domains. Purged on rule updates via SSE so that
+	// blocklist changes take effect immediately.
+	dnsCache, err := lru.NewARC(4096)
+	if err != nil {
+		return fmt.Errorf("create DNS cache: %w", err)
+	}
+
 	p := proxy.Proxy{
 		Addrs: []string{listenAddr},
 		Upstream: &resolver.DNS{
 			DOH: resolver.DOH{
-				URL: dohURL,
+				URL:   dohURL,
+				Cache: dnsCache,
 				GetProfileURL: func(q query.Query) (string, string) {
 					return dohURL, profileID
 				},
@@ -134,7 +144,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 
 	if strings.TrimSpace(accountToken) != "" {
 		onInit = append(onInit, func(ctx context.Context) {
-			watchRulesUpdates(ctx, apiServer, profileID, accountToken)
+			watchRulesUpdates(ctx, apiServer, profileID, accountToken, dnsCache.Purge)
 		})
 	} else {
 		log.Printf("Rules update stream disabled: no -token provided (cache still expires naturally)")

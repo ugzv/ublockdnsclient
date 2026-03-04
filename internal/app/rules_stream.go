@@ -8,10 +8,29 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
+
+// rulesHTTPClient is used for all rules API requests. It sets transport-level
+// timeouts so that a half-open TCP connection (server crash without FIN) does
+// not cause the SSE goroutine to hang indefinitely.
+var rulesHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		ForceAttemptHTTP2:     true,
+	},
+}
 
 type rulesVersionResponse struct {
 	ProfileID      string `json:"profile_id"`
@@ -29,7 +48,7 @@ type rulesUpdateEvent struct {
 	CustomRulesChanged bool   `json:"custom_rules_changed"`
 }
 
-func watchRulesUpdates(ctx context.Context, apiServer, profileID, accountToken string) {
+func watchRulesUpdates(ctx context.Context, apiServer, profileID, accountToken string, onRulesUpdated func()) {
 	token := strings.TrimSpace(accountToken)
 	if token == "" {
 		return
@@ -41,20 +60,70 @@ func watchRulesUpdates(ctx context.Context, apiServer, profileID, accountToken s
 		currentVersion = v.RulesVersion
 	}
 
+	// flushDebounce coalesces rapid rule updates into a single OS cache flush.
+	// A generation counter ensures that if a timer fires concurrently with a
+	// new schedule call, the stale callback is a no-op.
+	// maxFlushDelay caps how long continuous events can postpone a flush.
+	const maxFlushDelay = 10 * time.Second
+	var flushMu sync.Mutex
+	var flushTimer *time.Timer
+	var flushGen uint64
+	var firstPending time.Time
+	doFlush := func(version int64) {
+		if onRulesUpdated != nil {
+			onRulesUpdated()
+		}
+		if err := flushDNSCaches(); err != nil {
+			log.Printf("Rules updated (v%d) but DNS cache flush had issues: %v", version, err)
+			return
+		}
+		log.Printf("Rules updated (v%d), local DNS cache flushed", version)
+	}
+	scheduleFlush := func(version int64) {
+		flushMu.Lock()
+		defer flushMu.Unlock()
+		now := time.Now()
+		if flushTimer != nil {
+			flushTimer.Stop()
+		} else {
+			firstPending = now
+		}
+		// If events have been arriving continuously for too long, flush now.
+		if now.Sub(firstPending) >= maxFlushDelay {
+			flushTimer = nil
+			go doFlush(version)
+			return
+		}
+		flushGen++
+		gen := flushGen
+		flushTimer = time.AfterFunc(2*time.Second, func() {
+			flushMu.Lock()
+			flushTimer = nil
+			if gen != flushGen {
+				flushMu.Unlock()
+				return
+			}
+			flushMu.Unlock()
+			doFlush(version)
+		})
+	}
+
 	backoff := time.Second
 	for {
+		streamStart := time.Now()
 		if err := consumeRulesStream(ctx, apiServer, profileID, token, func(ev rulesUpdateEvent) {
 			if ev.RulesVersion <= currentVersion {
 				return
 			}
 			currentVersion = ev.RulesVersion
-			if err := flushDNSCaches(); err != nil {
-				log.Printf("Rules updated (v%d) but DNS cache flush had issues: %v", currentVersion, err)
-				return
-			}
-			log.Printf("Rules updated (v%d), local DNS cache flushed", currentVersion)
+			scheduleFlush(currentVersion)
 		}); err != nil && !errors.Is(err, context.Canceled) {
 			log.Printf("Rules stream disconnected: %v", err)
+		}
+
+		// Reset backoff if the stream was healthy for a meaningful duration.
+		if time.Since(streamStart) > 30*time.Second {
+			backoff = time.Second
 		}
 
 		select {
@@ -66,11 +135,7 @@ func watchRulesUpdates(ctx context.Context, apiServer, profileID, accountToken s
 		// Reconcile state after disconnect so missed events are still applied.
 		if v, err := fetchRulesVersion(ctx, apiServer, profileID, token); err == nil && v.RulesVersion > currentVersion {
 			currentVersion = v.RulesVersion
-			if err := flushDNSCaches(); err != nil {
-				log.Printf("Rules version advanced to v%d; DNS cache flush had issues: %v", currentVersion, err)
-			} else {
-				log.Printf("Rules version advanced to v%d, local DNS cache flushed", currentVersion)
-			}
+			scheduleFlush(currentVersion)
 		}
 
 		select {
@@ -101,6 +166,45 @@ func fetchRulesVersion(ctx context.Context, apiServer, profileID, accountToken s
 	return out, nil
 }
 
+// sseReadTimeout is how long we wait for any data on the SSE stream before
+// treating the connection as stalled. The server should send a keepalive or
+// event well within this window.
+const sseReadTimeout = 5 * time.Minute
+
+// timeoutReader wraps an io.Reader and enforces a per-Read deadline via a
+// timer. If no data arrives within the timeout the Read returns an error,
+// which causes the SSE scanner loop to exit and trigger a reconnect.
+type timeoutReader struct {
+	r       io.Reader
+	timeout time.Duration
+	timer   *time.Timer
+}
+
+func newTimeoutReader(r io.Reader, timeout time.Duration) *timeoutReader {
+	return &timeoutReader{r: r, timeout: timeout, timer: time.NewTimer(timeout)}
+}
+
+func (tr *timeoutReader) Read(p []byte) (int, error) {
+	// Reset the deadline for each read attempt.
+	tr.timer.Reset(tr.timeout)
+	type result struct {
+		n   int
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		n, err := tr.r.Read(p)
+		ch <- result{n, err}
+	}()
+	select {
+	case res := <-ch:
+		tr.timer.Stop()
+		return res.n, res.err
+	case <-tr.timer.C:
+		return 0, fmt.Errorf("SSE stream idle for %v", tr.timeout)
+	}
+}
+
 func consumeRulesStream(ctx context.Context, apiServer, profileID, accountToken string, onEvent func(ev rulesUpdateEvent)) error {
 	resp, err := doRulesGET(ctx, apiServer, profileID, accountToken, "/rules/stream", "text/event-stream")
 	if err != nil {
@@ -108,7 +212,7 @@ func consumeRulesStream(ctx context.Context, apiServer, profileID, accountToken 
 	}
 	defer resp.Body.Close()
 
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(newTimeoutReader(resp.Body, sseReadTimeout))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var dataLines []string
 
@@ -156,7 +260,7 @@ func doRulesGET(ctx context.Context, apiServer, profileID, accountToken, suffix,
 		req.Header.Set("Cache-Control", "no-cache")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := rulesHTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
