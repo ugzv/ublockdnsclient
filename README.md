@@ -1,6 +1,6 @@
 # uBlockDNS Client
 
-DNS-level ad and tracker blocking for your entire device. Uses the same community-maintained filter lists trusted by millions of uBlock Origin users (EasyList, EasyPrivacy, uBlock Origin filters, and more), applied at the DNS layer so every app and browser is covered without per-device extensions.
+DNS-level ad and tracker blocking for your entire device. Uses community-maintained filter lists (EasyList, EasyPrivacy, and more), applied at the DNS layer so every app and browser is covered without per-device extensions.
 
 **Website:** [ublockdns.com](https://ublockdns.com)
 
