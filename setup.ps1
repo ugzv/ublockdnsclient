@@ -18,11 +18,15 @@ param(
 $ErrorActionPreference = "Stop"
 $logPath = Join-Path $env:TEMP "ublockdns-setup.log"
 $setupOk = $false
-
-function Test-Admin {
-    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$commonPath = Join-Path $PSScriptRoot "scripts/windows/common.ps1"
+if (Test-Path $commonPath) {
+    . $commonPath
+} else {
+    function Test-Admin {
+        $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
 }
 
 if (-not (Test-Admin)) {

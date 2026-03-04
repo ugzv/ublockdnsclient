@@ -10,11 +10,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
-function Test-Admin {
-    $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+$commonPath = Join-Path $PSScriptRoot "scripts/windows/common.ps1"
+if (Test-Path $commonPath) {
+    . $commonPath
+} else {
+    function Test-Admin {
+        $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    }
 }
 
 if (-not (Test-Admin)) {
@@ -53,7 +57,6 @@ $url = $assetInfo.browser_download_url
 $installDir = Join-Path $env:ProgramFiles "uBlockDNS"
 $exePath = Join-Path $installDir "$binary.exe"
 $tempExe = Join-Path $env:TEMP "$binary.$([Guid]::NewGuid().ToString('N')).exe"
-$serviceName = "ublockdns"
 
 function Stop-ExistingInstall {
     param(
@@ -151,28 +154,31 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $serviceReady = $false
-$svc = $null
+$lastStatusText = ""
+$lastServiceState = "unknown"
 $maxChecks = 45
 for ($check = 1; $check -le $maxChecks; $check++) {
-    $svc = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    if ($null -ne $svc) {
-        if ($svc.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Running) {
-            $serviceReady = $true
-            break
-        }
-        if ($svc.Status -eq [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
-            break
-        }
+    $statusLines = & $exePath status 2>&1
+    $statusExitCode = $LASTEXITCODE
+    $lastStatusText = (($statusLines | ForEach-Object { "$_" }) -join "`n").Trim()
+    if ($lastStatusText -match '(?im)^Service:\s*(.+)$') {
+        $lastServiceState = $Matches[1].Trim()
     }
+
+    if ($statusExitCode -eq 0 -and $lastStatusText -match '(?im)^Status:\s*active\b') {
+        $serviceReady = $true
+        break
+    }
+
     if ($check -eq 1 -or ($check % 5 -eq 0)) {
-        Write-Host "Waiting for service to reach Running state ($check/$maxChecks) ..."
+        Write-Host "Waiting for uBlockDNS to report active status ($check/$maxChecks) ..."
     }
     Start-Sleep -Seconds 1
 }
 
 if (-not $serviceReady) {
-    $lastStatus = if ($null -eq $svc) { "not-installed" } else { $svc.Status.ToString() }
-    throw "Service '$serviceName' did not reach Running state (last status: $lastStatus). Check Windows Event Log -> System for details."
+    $statusSummary = if ($lastStatusText) { $lastStatusText } else { "(no status output)" }
+    throw "uBlockDNS did not report active status (service: $lastServiceState). Last status output: $statusSummary"
 }
 
 Write-Host "Done."
