@@ -154,6 +154,10 @@ func TestResolveDoHServer(t *testing.T) {
 	if got := app.ResolveDoHServer("https://flag.example.com/"); got != "https://flag.example.com" {
 		t.Fatalf("expected flag override, got %q", got)
 	}
+
+	if got := app.ResolveDoHServer("   https://trim.example.com/   "); got != "https://trim.example.com" {
+		t.Fatalf("expected trimmed flag override, got %q", got)
+	}
 }
 
 func TestResolveAPIServer(t *testing.T) {
@@ -169,5 +173,9 @@ func TestResolveAPIServer(t *testing.T) {
 
 	if got := app.ResolveAPIServer("https://api-flag.example.com/", app.DefaultDoHServer); got != "https://api-flag.example.com" {
 		t.Fatalf("expected flag API override, got %q", got)
+	}
+
+	if got := app.ResolveAPIServer("   https://api-trim.example.com/   ", app.DefaultDoHServer); got != "https://api-trim.example.com" {
+		t.Fatalf("expected trimmed flag API override, got %q", got)
 	}
 }
