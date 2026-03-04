@@ -1,23 +1,23 @@
 name: Bug Report
-description: Something isn't working right — client, blocking, dashboard, or anything else
+description: Something isn't working — ads showing, site broken, install failed, or anything else
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a bug! Please fill in what's relevant — not every field applies to every issue.
+        Thanks for letting us know! Just fill in what you can — skip anything that doesn't apply.
 
   - type: dropdown
     id: area
     attributes:
-      label: What area is affected?
+      label: What's the problem about?
       options:
-        - Client (install, service, DNS proxy)
-        - Blocking (domain not blocked, or wrongly blocked)
-        - Dashboard / website (UI, account, settings)
-        - Query log / stats (missing queries, wrong data)
-        - Filter lists or custom rules
-        - Other
+        - Ads or trackers aren't being blocked
+        - A website or app is broken (wrongly blocked)
+        - Installing or setting up the client
+        - The dashboard or website
+        - Query log or statistics
+        - Something else
     validations:
       required: true
 
@@ -25,116 +25,71 @@ body:
     id: description
     attributes:
       label: What happened?
-      description: "Describe what went wrong. Include URLs, domain names, screenshots, or error messages as applicable."
+      description: "Tell us what went wrong. Screenshots, error messages, or the website/domain name are all helpful."
+      placeholder: "e.g. I installed the client on my Mac but ads still show on youtube.com"
     validations:
       required: true
 
   - type: textarea
     id: expected
     attributes:
-      label: What did you expect?
-    validations:
-      required: true
-
-  - type: input
-    id: client-version
-    attributes:
-      label: Client version (if applicable)
-      description: "Run `ublockdns version` — skip if this isn't about the client"
-      placeholder: "e.g. 1.2.0"
+      label: What did you expect to happen?
+      placeholder: "e.g. Ads should be blocked after setup"
     validations:
       required: false
 
   - type: dropdown
     id: os
     attributes:
-      label: Operating system (if applicable)
+      label: What device/system are you using?
       options:
-        - macOS
-        - Linux (Ubuntu/Debian)
-        - Linux (Fedora/RHEL)
-        - Linux (Arch)
-        - Linux (Other)
-        - Windows 10
-        - Windows 11
-        - FreeBSD
-        - N/A (website/blocking issue)
+        - Mac
+        - Windows
+        - Linux
+        - iPhone / iPad
+        - Android
         - Other
-    validations:
-      required: false
-
-  - type: input
-    id: os-version
-    attributes:
-      label: OS version and architecture
-      description: "macOS: `sw_vers` / Linux: `uname -srm` / Windows: `winver`"
-      placeholder: "e.g. macOS 15.3 arm64, Ubuntu 24.04 x86_64"
+        - Not sure / not relevant
     validations:
       required: false
 
   - type: dropdown
     id: install-method
     attributes:
-      label: How did you install the client? (if applicable)
+      label: How did you install the client?
+      description: "Skip this if your issue isn't about the client app"
       options:
-        - Install script (curl | sh)
-        - Windows GUI installer (.exe)
-        - Windows PowerShell script
-        - Manual download from GitHub Releases
-        - Built from source
-        - N/A
-    validations:
-      required: false
-
-  - type: textarea
-    id: status-output
-    attributes:
-      label: Output of `ublockdns status` (if applicable)
-      render: text
+        - Ran the install command from the setup page
+        - Used the Windows installer (.exe)
+        - Downloaded manually from GitHub
+        - Not sure
+        - Didn't install the client (using the website only)
     validations:
       required: false
 
   - type: input
     id: domain
     attributes:
-      label: Domain name (for blocking issues)
-      description: "The domain that's wrongly blocked or not blocked"
-      placeholder: "e.g. ads.example.com or legitimate-site.com"
+      label: Website or domain (for blocking problems)
+      placeholder: "e.g. youtube.com, ads.example.com"
     validations:
       required: false
 
   - type: input
     id: browser
     attributes:
-      label: Browser (for dashboard/website issues)
-      placeholder: "e.g. Chrome 122, Safari 17, Firefox 124"
+      label: Browser (for website/dashboard problems)
+      placeholder: "e.g. Chrome, Safari, Firefox"
     validations:
       required: false
 
   - type: textarea
-    id: logs
+    id: extra
     attributes:
-      label: Relevant logs
+      label: Anything else?
       description: |
-        For client issues, include service logs if possible:
-        - **Linux**: `journalctl -u ublockdns --no-pager -n 50`
-        - **macOS**: `log show --predicate 'process == "ublockdns"' --last 5m`
-        - **Windows**: Event Viewer → Windows Logs → System, filter by "ublockdns"
+        Any other details that might help — your client version (`ublockdns version`), error output, or logs.
 
-        For dashboard issues, include browser console errors (F12 → Console).
-      render: text
-    validations:
-      required: false
-
-  - type: dropdown
-    id: network
-    attributes:
-      label: Network environment
-      options:
-        - Home network
-        - Corporate / office network
-        - VPN
-        - Cloud VM / server
-        - Other
+        Don't worry if you're not sure what to include — we'll ask if we need more info!
     validations:
       required: false
