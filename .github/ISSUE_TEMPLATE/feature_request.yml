@@ -1,0 +1,37 @@
+name: Feedback & Feature Request
+description: Suggest an improvement or share your experience
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We'd love to hear from you! Whether it's a feature idea, usability feedback, or something that could work better — all input is welcome.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: What is this about?
+      options:
+        - Feature request
+        - Usability improvement
+        - Platform support
+        - Documentation
+        - General feedback
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: "Tell us what you'd like to see, or what could be improved"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: "Any extra context — your OS, how you use uBlockDNS, screenshots, etc."
+    validations:
+      required: false
