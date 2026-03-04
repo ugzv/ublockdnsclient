@@ -5,16 +5,18 @@ body:
   - type: markdown
     attributes:
       value: |
-        We'd love to hear from you! Whether it's a feature idea, usability feedback, or something that could work better — all input is welcome.
+        We'd love to hear from you! Whether it's about the client, dashboard, blocking, or anything else — all input is welcome.
 
   - type: dropdown
-    id: category
+    id: area
     attributes:
-      label: What is this about?
+      label: What area is this about?
       options:
-        - Feature request
-        - Usability improvement
-        - Platform support
+        - Client (installer, service, CLI)
+        - Dashboard / website
+        - Blocking / filter lists
+        - Query log / stats
+        - Platform support (new OS, device, etc.)
         - Documentation
         - General feedback
     validations:
@@ -32,6 +34,6 @@ body:
     id: context
     attributes:
       label: Additional context
-      description: "Any extra context — your OS, how you use uBlockDNS, screenshots, etc."
+      description: "Any extra context — your setup, screenshots, examples from other tools, etc."
     validations:
       required: false
