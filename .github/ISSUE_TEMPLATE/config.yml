@@ -2,4 +2,4 @@ blank_issues_enabled: true
 contact_links:
   - name: Security vulnerability
     url: https://github.com/ugzv/ublockdnsclient/security/advisories/new
-    about: Report security issues privately — please don't open a public issue for vulnerabilities.
+    about: Report security issues privately. Please don't open a public issue for vulnerabilities.
