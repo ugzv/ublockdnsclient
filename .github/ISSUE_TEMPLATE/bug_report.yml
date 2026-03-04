@@ -1,25 +1,54 @@
 name: Bug Report
-description: Report a problem with the uBlockDNS client
+description: Something isn't working right — client, blocking, dashboard, or anything else
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug. The information below helps us diagnose and fix the issue quickly.
+        Thanks for reporting a bug! Please fill in what's relevant — not every field applies to every issue.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: What area is affected?
+      options:
+        - Client (install, service, DNS proxy)
+        - Blocking (domain not blocked, or wrongly blocked)
+        - Dashboard / website (UI, account, settings)
+        - Query log / stats (missing queries, wrong data)
+        - Filter lists or custom rules
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: "Describe what went wrong. Include URLs, domain names, screenshots, or error messages as applicable."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
 
   - type: input
     id: client-version
     attributes:
-      label: Client version
-      description: "Run `ublockdns version` and paste the output"
+      label: Client version (if applicable)
+      description: "Run `ublockdns version` — skip if this isn't about the client"
       placeholder: "e.g. 1.2.0"
     validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: os
     attributes:
-      label: Operating system
+      label: Operating system (if applicable)
       options:
         - macOS
         - Linux (Ubuntu/Debian)
@@ -29,9 +58,10 @@ body:
         - Windows 10
         - Windows 11
         - FreeBSD
+        - N/A (website/blocking issue)
         - Other
     validations:
-      required: true
+      required: false
 
   - type: input
     id: os-version
@@ -40,55 +70,58 @@ body:
       description: "macOS: `sw_vers` / Linux: `uname -srm` / Windows: `winver`"
       placeholder: "e.g. macOS 15.3 arm64, Ubuntu 24.04 x86_64"
     validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: install-method
     attributes:
-      label: How did you install the client?
+      label: How did you install the client? (if applicable)
       options:
         - Install script (curl | sh)
         - Windows GUI installer (.exe)
         - Windows PowerShell script
         - Manual download from GitHub Releases
         - Built from source
-    validations:
-      required: true
-
-  - type: textarea
-    id: status-output
-    attributes:
-      label: Output of `ublockdns status`
-      description: "Run `ublockdns status` (may need sudo/admin) and paste the full output"
-      render: text
+        - N/A
     validations:
       required: false
 
   - type: textarea
-    id: description
+    id: status-output
     attributes:
-      label: What happened?
-      description: "Describe what went wrong. Include the exact command you ran and the full error output if applicable."
+      label: Output of `ublockdns status` (if applicable)
+      render: text
     validations:
-      required: true
+      required: false
 
-  - type: textarea
-    id: expected
+  - type: input
+    id: domain
     attributes:
-      label: What did you expect?
-      description: "What should have happened instead?"
+      label: Domain name (for blocking issues)
+      description: "The domain that's wrongly blocked or not blocked"
+      placeholder: "e.g. ads.example.com or legitimate-site.com"
     validations:
-      required: true
+      required: false
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser (for dashboard/website issues)
+      placeholder: "e.g. Chrome 122, Safari 17, Firefox 124"
+    validations:
+      required: false
 
   - type: textarea
     id: logs
     attributes:
       label: Relevant logs
       description: |
-        If applicable, include service logs:
+        For client issues, include service logs if possible:
         - **Linux**: `journalctl -u ublockdns --no-pager -n 50`
         - **macOS**: `log show --predicate 'process == "ublockdns"' --last 5m`
-        - **Windows**: Event Viewer → Windows Logs → System, filter by source "ublockdns"
+        - **Windows**: Event Viewer → Windows Logs → System, filter by "ublockdns"
+
+        For dashboard issues, include browser console errors (F12 → Console).
       render: text
     validations:
       required: false
@@ -97,7 +130,6 @@ body:
     id: network
     attributes:
       label: Network environment
-      description: "This helps us identify DNS resolution or firewall issues"
       options:
         - Home network
         - Corporate / office network
@@ -106,11 +138,3 @@ body:
         - Other
     validations:
       required: false
-
-  - type: checkboxes
-    id: token
-    attributes:
-      label: Account token
-      description: "Do NOT share your token — just tell us if one was configured"
-      options:
-        - label: I provided an account token during install
