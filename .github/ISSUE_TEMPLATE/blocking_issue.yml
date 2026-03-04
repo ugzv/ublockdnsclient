@@ -1,0 +1,63 @@
+name: Blocking Issue
+description: A domain isn't blocked, or a website is broken because something is wrongly blocked
+labels: ["blocking"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you report**, a few things to know:
+
+        uBlockDNS uses community-maintained filter lists (like EasyList, EasyPrivacy, and others) to decide what gets blocked. We don't maintain these lists ourselves.
+
+        **What you can try first:**
+        1. Open your [uBlockDNS dashboard](https://ublockdns.com) and check which filter lists are enabled
+        2. If a site is broken, try toggling lists off one at a time to find which one causes it
+        3. If you find the list, you can report it directly to the list maintainers (linked in the dashboard footer)
+        4. You can also add the domain to your custom allow/block rules in the dashboard
+
+        Still need help? Fill in the form below and we'll take a look.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: What's happening?
+      options:
+        - Ads or trackers are getting through (not blocked)
+        - A website or app is broken because something is wrongly blocked
+    validations:
+      required: true
+
+  - type: input
+    id: domain
+    attributes:
+      label: Website or domain
+      placeholder: "e.g. youtube.com, ads.example.com"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What did you notice?
+      description: "Screenshots are very helpful here"
+      placeholder: "e.g. Banner ads still show on example.com, or example.com won't load at all"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before submitting
+      options:
+        - label: I checked my enabled filter lists in the dashboard
+        - label: I have not added custom rules that might cause this
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: "Which lists you have enabled, browser, device, etc."
+    validations:
+      required: false
