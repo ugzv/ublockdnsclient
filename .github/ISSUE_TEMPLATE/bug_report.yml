@@ -1,11 +1,11 @@
 name: Bug Report
-description: Something isn't working — ads showing, site broken, install failed, or anything else
+description: Something isn't working - ads showing, site broken, install failed, or anything else
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for letting us know! Just fill in what you can — skip anything that doesn't apply.
+        Thanks for letting us know! Just fill in what you can, skip anything that doesn't apply.
 
   - type: dropdown
     id: area
@@ -88,8 +88,8 @@ body:
     attributes:
       label: Anything else?
       description: |
-        Any other details that might help — your client version (`ublockdns version`), error output, or logs.
+        Any other details that might help, like your client version (`ublockdns version`), error output, or logs.
 
-        Don't worry if you're not sure what to include — we'll ask if we need more info!
+        Don't worry if you're not sure what to include, we'll ask if we need more info!
     validations:
       required: false
