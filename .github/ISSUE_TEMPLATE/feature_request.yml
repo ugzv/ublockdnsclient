@@ -1,23 +1,22 @@
-name: Feedback & Feature Request
-description: Suggest an improvement or share your experience
+name: Feedback & Ideas
+description: Suggest an improvement, share your experience, or tell us what you'd like to see
 labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
       value: |
-        We'd love to hear from you! Whether it's about the client, dashboard, blocking, or anything else — all input is welcome.
+        We'd love to hear from you! All feedback is welcome — big ideas, small tweaks, or just telling us what you think.
 
   - type: dropdown
     id: area
     attributes:
-      label: What area is this about?
+      label: What's this about?
       options:
-        - Client (installer, service, CLI)
-        - Dashboard / website
-        - Blocking / filter lists
-        - Query log / stats
-        - Platform support (new OS, device, etc.)
-        - Documentation
+        - The client app (installer, setup)
+        - The dashboard / website
+        - Ad blocking or filter lists
+        - A new feature idea
+        - Support for a new device or platform
         - General feedback
     validations:
       required: true
@@ -25,15 +24,16 @@ body:
   - type: textarea
     id: description
     attributes:
-      label: Description
-      description: "Tell us what you'd like to see, or what could be improved"
+      label: Tell us more
+      description: "What would you like to see changed or added?"
+      placeholder: "e.g. It would be great if I could see which filter list blocked a domain"
     validations:
       required: true
 
   - type: textarea
     id: context
     attributes:
-      label: Additional context
-      description: "Any extra context — your setup, screenshots, examples from other tools, etc."
+      label: Anything else?
+      description: "Screenshots, examples from other tools, or any extra context"
     validations:
       required: false
