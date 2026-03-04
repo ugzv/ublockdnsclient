@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 	"log"
-	"os/exec"
 	"regexp"
 	"runtime"
 	"strings"
@@ -12,15 +11,42 @@ import (
 	"github.com/nextdns/nextdns/host/service"
 )
 
+type InstallOutcome string
+
+const (
+	InstallOutcomeFresh    InstallOutcome = "fresh"
+	InstallOutcomeUpdated  InstallOutcome = "updated"
+	InstallOutcomeSwitched InstallOutcome = "switched"
+)
+
 // install sets up ublockdns as a system service.
 func Install(profileID, dohServer, apiServer, accountToken string) error {
+	_, err := InstallDetailed(profileID, dohServer, apiServer, accountToken)
+	return err
+}
+
+// InstallDetailed installs (or reinstalls) the service and returns a UX-friendly outcome.
+func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (InstallOutcome, error) {
 	if !hasInstallPrivileges() {
-		return fmt.Errorf("install requires elevated privileges - %s", installPrivilegeHint())
+		return InstallOutcomeFresh, fmt.Errorf("install requires elevated privileges - %s", installPrivilegeHint())
+	}
+
+	prevDNSLocal := hasDNS127001(currentSystemDNS())
+	prevInstalled := serviceCurrentlyInstalled()
+	prevState, prevStateErr := loadInstallState()
+	hasPrevState := prevStateErr == nil && strings.TrimSpace(prevState.ProfileID) != ""
+
+	outcome := InstallOutcomeFresh
+	if prevInstalled {
+		outcome = InstallOutcomeUpdated
+		if hasPrevState && prevState.ProfileID != profileID {
+			outcome = InstallOutcomeSwitched
+		}
 	}
 
 	svc, err := newService(profileID, dohServer, apiServer)
 	if err != nil {
-		return err
+		return outcome, err
 	}
 
 	// Uninstall any previous version first.
@@ -29,14 +55,16 @@ func Install(profileID, dohServer, apiServer, accountToken string) error {
 
 	log.Println("Installing service...")
 	if err := svc.Install(); err != nil {
-		return fmt.Errorf("install service: %w", err)
+		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
+		return outcome, fmt.Errorf("install service: %w", err)
 	}
 
 	log.Println("Starting service...")
 	if err := svc.Start(); err != nil {
 		// Rollback: remove service if it can't start.
 		_ = svc.Uninstall()
-		return fmt.Errorf("start service: %w", err)
+		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
+		return outcome, fmt.Errorf("start service: %w", err)
 	}
 
 	if strings.TrimSpace(accountToken) != "" {
@@ -53,10 +81,15 @@ func Install(profileID, dohServer, apiServer, accountToken string) error {
 
 	log.Println("Setting system DNS to 127.0.0.1...")
 	if err := host.SetDNS("127.0.0.1"); err != nil {
-		return fmt.Errorf("set system DNS: %w", err)
+		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
+		return outcome, fmt.Errorf("set system DNS: %w", err)
 	}
 
-	return nil
+	if err := persistInstallState(profileID, dohServer, apiServer); err != nil {
+		log.Printf("Warning: failed to persist install state: %v", err)
+	}
+
+	return outcome, nil
 }
 
 // uninstall removes the system service and restores DNS.
@@ -76,8 +109,61 @@ func Uninstall() error {
 		return fmt.Errorf("uninstall service: %w", err)
 	}
 	_ = clearPersistedTokens()
+	_ = clearInstallState()
 
 	return nil
+}
+
+func serviceCurrentlyInstalled() bool {
+	if runtime.GOOS == "windows" {
+		if st, ok := windowsServiceState(); ok {
+			return st != "not-installed"
+		}
+		return false
+	}
+	svc, err := newService("", "", "")
+	if err != nil {
+		return false
+	}
+	st, err := svc.Status()
+	if err != nil {
+		return false
+	}
+	return st != service.StatusNotInstalled
+}
+
+func rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState bool, prevState installState) {
+	log.Printf("Install failed, attempting rollback...")
+
+	if svc, err := newService("", "", ""); err == nil {
+		_ = svc.Stop()
+		_ = svc.Uninstall()
+	}
+
+	if prevInstalled && hasPrevState {
+		if oldSvc, err := newService(prevState.ProfileID, prevState.DoHServer, prevState.APIServer); err == nil {
+			if err := oldSvc.Install(); err != nil {
+				log.Printf("Rollback warning: failed to reinstall previous service config: %v", err)
+			}
+			if err := oldSvc.Start(); err != nil {
+				log.Printf("Rollback warning: failed to start previous service config: %v", err)
+			}
+		} else {
+			log.Printf("Rollback warning: could not create previous service config: %v", err)
+		}
+	} else if prevInstalled {
+		log.Printf("Rollback warning: previous service config unknown; manual reinstall may be required.")
+	}
+
+	if prevDNSLocal {
+		if err := host.SetDNS("127.0.0.1"); err != nil {
+			log.Printf("Rollback warning: failed to restore local DNS setting: %v", err)
+		}
+	} else {
+		if err := host.ResetDNS(); err != nil {
+			log.Printf("Rollback warning: failed to restore DNS defaults: %v", err)
+		}
+	}
 }
 
 func ServiceStart() error {
@@ -152,15 +238,6 @@ func ShowStatus() {
 	}
 }
 
-func hasDNS127001(dns []string) bool {
-	for _, d := range dns {
-		if d == "127.0.0.1" {
-			return true
-		}
-	}
-	return false
-}
-
 func currentSystemDNS() []string {
 	// On macOS, host.DNS() can report stale/non-primary resolver values.
 	// Prefer scutil output when available.
@@ -180,7 +257,7 @@ func currentSystemDNS() []string {
 }
 
 func dnsFromScutil() ([]string, error) {
-	out, err := exec.Command("scutil", "--dns").Output()
+	out, err := commandOutput("scutil", "--dns")
 	if err != nil {
 		return nil, err
 	}
@@ -189,55 +266,32 @@ func dnsFromScutil() ([]string, error) {
 	if len(matches) == 0 {
 		return nil, nil
 	}
-	seen := map[string]struct{}{}
-	var dns []string
+	raw := make([]string, 0, len(matches))
 	for _, m := range matches {
 		if len(m) < 2 {
 			continue
 		}
-		ip := strings.TrimSpace(m[1])
-		if ip == "" {
-			continue
-		}
-		if _, ok := seen[ip]; ok {
-			continue
-		}
-		seen[ip] = struct{}{}
-		dns = append(dns, ip)
+		raw = append(raw, m[1])
 	}
-	return dns, nil
+	return collectUniqueNonEmpty(raw), nil
 }
 
 func dnsFromWindowsPowerShell() ([]string, error) {
-	out, err := exec.Command(
+	out, err := commandOutput(
 		"powershell",
 		"-NoProfile",
 		"-NonInteractive",
 		"-Command",
 		`Get-DnsClientServerAddress -AddressFamily IPv4 | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ }`,
-	).Output()
+	)
 	if err != nil {
 		return nil, err
 	}
-	lines := strings.Split(string(out), "\n")
-	seen := map[string]struct{}{}
-	var dns []string
-	for _, line := range lines {
-		ip := strings.TrimSpace(line)
-		if ip == "" {
-			continue
-		}
-		if _, ok := seen[ip]; ok {
-			continue
-		}
-		seen[ip] = struct{}{}
-		dns = append(dns, ip)
-	}
-	return dns, nil
+	return collectUniqueNonEmpty(strings.Split(string(out), "\n")), nil
 }
 
 func windowsServiceState() (string, bool) {
-	out, err := exec.Command("sc.exe", "query", serviceName).CombinedOutput()
+	out, err := commandCombinedOutput("sc.exe", "query", serviceName)
 	text := string(out)
 	if err != nil {
 		if strings.Contains(text, "FAILED 1060") {
