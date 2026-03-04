@@ -1,110 +1,72 @@
 # uBlockDNS Client
 
-[![CI](https://github.com/ugzv/ublockdnsclient/actions/workflows/ci.yml/badge.svg)](https://github.com/ugzv/ublockdnsclient/actions/workflows/ci.yml)
+DNS-level ad and tracker blocking for your entire device. Uses the same community-maintained filter lists trusted by millions of uBlock Origin users (EasyList, EasyPrivacy, uBlock Origin filters, and more), applied at the DNS layer so every app and browser is covered without per-device extensions.
 
-Cross-platform CLI client for uBlockDNS.
+**Website:** [ublockdns.com](https://ublockdns.com)
 
 ## Install
 
-Use the installer from GitHub (macOS/Linux):
+Create a free account at [ublockdns.com](https://ublockdns.com), then follow the setup guide in your dashboard. The guide covers all supported platforms with copy-paste commands and step-by-step instructions.
+
+Quick install for macOS and Linux:
 
 ```sh
-curl -sSf https://github.com/ugzv/ublockdnsclient/releases/latest/download/install.sh | sh -s -- <profile-id>
+curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>
 ```
 
-Windows (PowerShell, Administrator):
+Windows (PowerShell as Administrator):
 
 ```powershell
-iwr https://github.com/ugzv/ublockdnsclient/releases/latest/download/install.ps1 -OutFile install.ps1
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
+iwr https://ublockdns.com/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 ```
 
-Beginner-friendly guided setup (auto-elevates and prompts for values):
+A Windows GUI installer (.exe) is also available on the [releases page](https://github.com/ugzv/ublockdnsclient/releases).
 
-```powershell
-iwr https://github.com/ugzv/ublockdnsclient/releases/latest/download/setup.ps1 -OutFile setup.ps1
-powershell -ExecutionPolicy Bypass -File .\setup.ps1
+### Other platforms
+
+The dashboard setup guide also covers Chrome, Firefox, iOS, Android, and routers. These use DNS-over-HTTPS directly and don't require this client.
+
+### Supported architectures
+
+linux/amd64, linux/arm64, linux/armv7, darwin/amd64, darwin/arm64, windows/amd64, windows/arm64, freebsd/amd64
+
+## Usage
+
+```
+ublockdns install   -profile <profile-id>   Install as system service
+ublockdns uninstall                          Remove service and restore DNS
+ublockdns start                              Start the service
+ublockdns stop                               Stop the service
+ublockdns status                             Show service state and DNS config
+ublockdns version                            Print version
 ```
 
-Windows GUI installer (`.exe` wizard):
-- Download from the latest release assets:
-  - `uBlockDNS-Setup-<version>-windows-amd64.exe`
-- Run installer, then keep "Run guided setup now (recommended)" checked at the final step.
+Manage your filter lists, custom rules, and query log from the [dashboard](https://ublockdns.com).
 
-Prebuilt binaries currently target:
-- `linux/amd64`
-- `linux/arm64`
-- `linux/arm/v7`
-- `darwin/amd64`
-- `darwin/arm64`
-- `windows/amd64`
-- `windows/arm64`
-- `freebsd/amd64`
+## How it works
 
-Or build locally:
+The client runs a local DNS proxy on `127.0.0.1:53` and forwards all queries to the uBlockDNS server over encrypted DNS-over-HTTPS. The server checks each query against your enabled filter lists and returns a block response for matched domains.
+
+When you change filter lists or custom rules in the dashboard, the client receives the update in real time and flushes your local DNS cache automatically.
+
+## Build from source
+
+Requires Go 1.23 or later.
 
 ```sh
 go build -o ublockdns .
 sudo ./ublockdns install -profile <profile-id>
 ```
 
-## Usage
+## Feedback and issues
 
-```text
-ublockdns install   -profile <profile-id>
-ublockdns uninstall
-ublockdns start
-ublockdns stop
-ublockdns run       -profile <profile-id>
-ublockdns status
-ublockdns version
-```
+Found a bug or have a suggestion? [Open an issue](https://github.com/ugzv/ublockdnsclient/issues/new/choose).
 
-Optional overrides:
-- `-server <url>` on `install` / `run` for development DoH endpoints.
-- `-api-server <url>` on `install` / `run` for development API endpoints.
-- `-token <account-token>` on `install` / `run` to enable instant rules-update signal handling and automatic local DNS cache flush.
-- `UBLOCKDNS_DOH_SERVER` environment variable for global override.
-- `UBLOCKDNS_API_SERVER` environment variable for API override.
-- `UBLOCKDNS_ACCOUNT_TOKEN` environment variable for runtime token (when not passed by flag).
-
-## Instant Rule Updates
-
-When a token is available, the client subscribes to backend rules-update events and flushes local DNS cache automatically after list or custom-rule changes.
-
-- On `install -token <account-token>`, token is stored in a restricted file and loaded at runtime:
-  - Unix: `/etc/ublockdns/<profile>.token` (mode `0600`)
-  - Windows: `%ProgramData%\\ublockdns\\<profile>.token`
-- Token is not printed in logs.
-- Service arguments do not include token material.
-
-## Development
-
-Requirements:
-- Go 1.23+
-
-Commands:
-
-```sh
-go test ./...
-go build ./...
-```
-
-Release builds (local):
-
-```sh
-./scripts/build-release.sh
-```
-
-## Releases
-
-- Tag a commit as `vX.Y.Z`.
-- GitHub Actions uses GoReleaser to build and publish release assets.
-- Assets are uploaded as `ublockdns-<os>-<arch>` (or `...-armv7`) plus `SHA256SUMS`, along with installer scripts (`install.sh`, `install.ps1`, `setup.ps1`).
+For blocking problems (ads getting through or a site wrongly blocked), check which filter lists you have enabled in your [dashboard](https://ublockdns.com) first. uBlockDNS uses community-maintained lists and does not control their contents.
 
 ## Security
 
-Report security issues privately. Do not open public issues for exploitable vulnerabilities.
+Report security vulnerabilities privately through [GitHub Security Advisories](https://github.com/ugzv/ublockdnsclient/security/advisories/new). Do not open public issues for security problems.
 
 ## License
 
