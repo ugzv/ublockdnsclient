@@ -31,6 +31,13 @@ Usage:
 `, version)
 }
 
+type profileCommandSpec struct {
+	startMessage string
+	failPrefix   string
+	run          func(profileID, dohServer, apiServer, token string) error
+	onSuccess    func(normalizedProfileID string)
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		if runtime.GOOS == "windows" {
@@ -49,19 +56,13 @@ func main() {
 		fmt.Printf("ublockdns v%s\n", version)
 
 	case "run":
-		profileID := flagValue("-profile")
-		dohServer := flagValue("-server")
-		apiServer := flagValue("-api-server")
-		token := flagValue("-token")
-		normalizedProfileID, err := app.NormalizeProfileIDInput(profileID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Starting uBlockDNS in foreground...")
-		if err := app.Run(version, normalizedProfileID, dohServer, apiServer, token); err != nil {
-			log.Fatalf("Error: %v", err)
-		}
+		executeProfileCommand(profileCommandSpec{
+			startMessage: "Starting uBlockDNS in foreground...",
+			failPrefix:   "Error",
+			run: func(profileID, dohServer, apiServer, token string) error {
+				return app.Run(version, profileID, dohServer, apiServer, token)
+			},
+		})
 
 	case "install":
 		profileID := flagValue("-profile")
@@ -74,10 +75,18 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("Installing uBlockDNS service...")
-		if err := app.Install(normalizedProfileID, dohServer, apiServer, token); err != nil {
+		outcome, err := app.InstallDetailed(normalizedProfileID, dohServer, apiServer, token)
+		if err != nil {
 			log.Fatalf("Install failed: %v", err)
 		}
-		fmt.Println("uBlockDNS installed and activated.")
+		switch outcome {
+		case app.InstallOutcomeSwitched:
+			fmt.Println("uBlockDNS profile switched and activated.")
+		case app.InstallOutcomeUpdated:
+			fmt.Println("uBlockDNS updated and activated.")
+		default:
+			fmt.Println("uBlockDNS installed and activated.")
+		}
 		fmt.Printf("All DNS queries now route through your profile: %s\n", normalizedProfileID)
 
 	case "uninstall":
@@ -108,6 +117,28 @@ func main() {
 		usage()
 		pauseBeforeExit()
 		os.Exit(1)
+	}
+}
+
+func executeProfileCommand(spec profileCommandSpec) {
+	profileID := flagValue("-profile")
+	dohServer := flagValue("-server")
+	apiServer := flagValue("-api-server")
+	token := flagValue("-token")
+	normalizedProfileID, err := app.NormalizeProfileIDInput(profileID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if spec.startMessage != "" {
+		fmt.Println(spec.startMessage)
+	}
+	if err := spec.run(normalizedProfileID, dohServer, apiServer, token); err != nil {
+		log.Fatalf("%s: %v", spec.failPrefix, err)
+	}
+	if spec.onSuccess != nil {
+		spec.onSuccess(normalizedProfileID)
 	}
 }
 
