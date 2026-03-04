@@ -1,5 +1,5 @@
 name: Bug Report
-description: Something isn't working - ads showing, site broken, install failed, or anything else
+description: Something isn't working with the client app, dashboard, or query log
 labels: ["bug"]
 body:
   - type: markdown
@@ -7,16 +7,18 @@ body:
       value: |
         Thanks for letting us know! Just fill in what you can, skip anything that doesn't apply.
 
+        **If your issue is about a domain being blocked or not blocked**, please use the "Blocking Issue" template instead. It has specific guidance for filter list problems.
+
   - type: dropdown
     id: area
     attributes:
       label: What's the problem about?
       options:
-        - Ads or trackers aren't being blocked
-        - A website or app is broken (wrongly blocked)
         - Installing or setting up the client
+        - The client app (crashes, DNS not working)
         - The dashboard or website
         - Query log or statistics
+        - Account or device settings
         - Something else
     validations:
       required: true
@@ -25,8 +27,8 @@ body:
     id: description
     attributes:
       label: What happened?
-      description: "Tell us what went wrong. Screenshots, error messages, or the website/domain name are all helpful."
-      placeholder: "e.g. I installed the client on my Mac but ads still show on youtube.com"
+      description: "Tell us what went wrong. Screenshots, error messages, or steps to reproduce are all helpful."
+      placeholder: "e.g. I installed the client on my Mac but the service won't start"
     validations:
       required: true
 
@@ -34,7 +36,7 @@ body:
     id: expected
     attributes:
       label: What did you expect to happen?
-      placeholder: "e.g. Ads should be blocked after setup"
+      placeholder: "e.g. The client should start and ads should be blocked"
     validations:
       required: false
 
@@ -64,14 +66,6 @@ body:
         - Downloaded manually from GitHub
         - Not sure
         - Didn't install the client (using the website only)
-    validations:
-      required: false
-
-  - type: input
-    id: domain
-    attributes:
-      label: Website or domain (for blocking problems)
-      placeholder: "e.g. youtube.com, ads.example.com"
     validations:
       required: false
 
