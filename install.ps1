@@ -53,10 +53,16 @@ if (-not $assetInfo) {
     throw "Release $Version does not contain asset '$asset'. Available assets: $available"
 }
 $url = $assetInfo.browser_download_url
+$sumsAssetInfo = $release.assets | Where-Object { $_.name -eq "SHA256SUMS" } | Select-Object -First 1
+if (-not $sumsAssetInfo) {
+    throw "Release $Version does not contain SHA256SUMS."
+}
+$sumsUrl = $sumsAssetInfo.browser_download_url
 
 $installDir = Join-Path $env:ProgramFiles "uBlockDNS"
 $exePath = Join-Path $installDir "$binary.exe"
 $tempExe = Join-Path $env:TEMP "$binary.$([Guid]::NewGuid().ToString('N')).exe"
+$tempSums = Join-Path $env:TEMP "SHA256SUMS.$([Guid]::NewGuid().ToString('N'))"
 
 function Stop-ExistingInstall {
     param(
@@ -118,6 +124,29 @@ for ($attempt = 1; $attempt -le 3; $attempt++) {
 if (-not $downloaded) {
     throw "Download failed for $url"
 }
+
+Write-Host "Downloading checksum manifest ..."
+Invoke-WebRequest -Uri $sumsUrl -OutFile $tempSums
+
+$expectedHash = $null
+foreach ($line in Get-Content -Path $tempSums) {
+    if ($line -match '^([0-9a-fA-F]{64})\s+\*?(.+)$') {
+        if ($Matches[2] -eq $asset) {
+            $expectedHash = $Matches[1].ToLowerInvariant()
+            break
+        }
+    }
+}
+if (-not $expectedHash) {
+    throw "Could not find checksum for '$asset' in SHA256SUMS."
+}
+
+$actualHash = (Get-FileHash -Path $tempExe -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualHash -ne $expectedHash) {
+    throw "SHA-256 verification failed for '$asset'. Expected $expectedHash, got $actualHash."
+}
+Write-Host "Checksum verified for $asset."
+Remove-Item -Path $tempSums -Force -ErrorAction SilentlyContinue
 
 Stop-ExistingInstall -ExePath $exePath -BinaryName $binary
 

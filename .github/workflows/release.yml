@@ -32,6 +32,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Publish script checksums
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shasum -a 256 install.sh install.ps1 setup.ps1 > SCRIPT_SHA256SUMS
+          gh release upload "${{ github.ref_name }}" SCRIPT_SHA256SUMS --clobber
+
   windows-installer:
     needs: goreleaser
     runs-on: windows-latest
@@ -54,6 +62,7 @@ jobs:
 
           $assets = @(
             "ublockdns-windows-$arch.exe",
+            "SHA256SUMS",
             "install.ps1",
             "setup.ps1"
           )
@@ -83,10 +92,18 @@ jobs:
           New-Item -ItemType Directory -Force -Path out | Out-Null
           Move-Item "packaging/windows/uBlockDNS-Setup.exe" "out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe" -Force
 
+      - name: Append GUI installer checksum
+        shell: pwsh
+        run: |
+          $gui = "out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe"
+          $hash = (Get-FileHash -Path $gui -Algorithm SHA256).Hash.ToLowerInvariant()
+          Add-Content -Path "dist/SHA256SUMS" -Value "$hash  $(Split-Path -Leaf $gui)"
+
       - name: Upload GUI installer to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe
+            dist/SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -16,6 +16,7 @@
    - `uBlockDNS-Setup-vX.Y.Z-windows-amd64.exe`
    - `ublockdns-freebsd-amd64`
    - `SHA256SUMS`
+   - `SCRIPT_SHA256SUMS`
    - `install.sh`
    - `install.ps1`
    - `setup.ps1`

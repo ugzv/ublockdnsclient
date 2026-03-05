@@ -14,10 +14,30 @@ Quick install for macOS and Linux:
 curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>
 ```
 
+Verify installer script checksum (Linux):
+
+```sh
+curl -sSfLO https://ublockdns.com/install.sh
+curl -sSfLO https://github.com/ugzv/ublockdnsclient/releases/latest/download/SCRIPT_SHA256SUMS
+grep " install.sh$" SCRIPT_SHA256SUMS | sha256sum -c -
+sh install.sh <profile-id>
+```
+
 Windows (PowerShell as Administrator):
 
 ```powershell
 iwr https://ublockdns.com/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
+```
+
+Verify installer script checksum (PowerShell):
+
+```powershell
+iwr https://ublockdns.com/install.ps1 -OutFile install.ps1
+iwr https://github.com/ugzv/ublockdnsclient/releases/latest/download/SCRIPT_SHA256SUMS -OutFile SCRIPT_SHA256SUMS
+$expected = (Select-String -Path .\SCRIPT_SHA256SUMS -Pattern " install.ps1$").Line.Split()[0].ToLower()
+$actual = (Get-FileHash .\install.ps1 -Algorithm SHA256).Hash.ToLower()
+if ($actual -ne $expected) { throw "install.ps1 checksum mismatch" }
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 ```
 
 A Windows GUI installer (.exe) is also available on the [releases page](https://github.com/ugzv/ublockdnsclient/releases).

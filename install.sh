@@ -11,6 +11,7 @@ REPO="ugzv/ublockdnsclient"
 BINARY="ublockdns"
 INSTALL_DIR="/usr/local/bin"
 TMP_BIN=""
+TMP_SUMS=""
 
 # ── Terminal colors ──────────────────────────────────────────
 
@@ -36,6 +37,7 @@ run_as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 
 cleanup() {
     [ -n "$TMP_BIN" ] && [ -f "$TMP_BIN" ] && rm -f "$TMP_BIN"
+    [ -n "$TMP_SUMS" ] && [ -f "$TMP_SUMS" ] && rm -f "$TMP_SUMS"
 }
 
 # ── Download with retries ───────────────────────────────────
@@ -59,6 +61,24 @@ download() {
     done
 
     return 1
+}
+
+verify_sha256() {
+    file="$1"
+    expected="$2"
+
+    if has sha256sum; then
+        actual=$(sha256sum "$file" | awk '{print $1}')
+    elif has shasum; then
+        actual=$(shasum -a 256 "$file" | awk '{print $1}')
+    elif has openssl; then
+        actual=$(openssl dgst -sha256 "$file" | awk '{print $NF}')
+    else
+        error "No SHA-256 tool found (need sha256sum, shasum, or openssl)."
+        return 1
+    fi
+
+    [ "$actual" = "$expected" ]
 }
 
 # ── DNS validation ──────────────────────────────────────────
@@ -304,9 +324,11 @@ main() {
 
     if [ -n "$TAG" ]; then
         URL="https://github.com/${REPO}/releases/download/${TAG}/${BINARY}-${OS}-${ARCH}"
+        SUMS_URL="https://github.com/${REPO}/releases/download/${TAG}/SHA256SUMS"
     else
         TAG="latest"
         URL="https://github.com/${REPO}/releases/latest/download/${BINARY}-${OS}-${ARCH}"
+        SUMS_URL="https://github.com/${REPO}/releases/latest/download/SHA256SUMS"
     fi
 
     # ── Check for existing installation ──────────────────────
@@ -332,10 +354,27 @@ main() {
     # ── Download binary (while DNS still works) ──────────────
 
     TMP_BIN="$(mktemp "/tmp/${BINARY}.XXXXXX")"
+    TMP_SUMS="$(mktemp "/tmp/${BINARY}.sums.XXXXXX")"
     if ! download "$URL" "$TMP_BIN"; then
         error "Download failed: ${URL}"
         exit 1
     fi
+    if ! download "$SUMS_URL" "$TMP_SUMS"; then
+        error "Download failed: ${SUMS_URL}"
+        exit 1
+    fi
+
+    ASSET_NAME="${BINARY}-${OS}-${ARCH}"
+    EXPECTED_SHA256=$(awk -v asset="$ASSET_NAME" '$2==asset || $2=="*"asset {print $1; exit}' "$TMP_SUMS")
+    if [ -z "$EXPECTED_SHA256" ]; then
+        error "Could not find checksum for ${ASSET_NAME} in SHA256SUMS."
+        exit 1
+    fi
+    if ! verify_sha256 "$TMP_BIN" "$EXPECTED_SHA256"; then
+        error "SHA-256 verification failed for ${ASSET_NAME}."
+        exit 1
+    fi
+    success "Checksum verified for ${ASSET_NAME}."
     chmod +x "$TMP_BIN"
 
     # ── Stop existing service ────────────────────────────────
