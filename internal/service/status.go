@@ -27,6 +27,15 @@ type StatusInfo struct {
 	Warnings  []string `json:"warnings,omitempty"`
 }
 
+var (
+	currentStatusFunc = CurrentStatus
+	localDNSProbeFunc = func() error {
+		return core.CheckLocalDNSProxy("example.com")
+	}
+	nowFunc   = time.Now
+	sleepFunc = time.Sleep
+)
+
 func serviceCurrentlyInstalled() bool {
 	st, err := serviceState()
 	if err != nil {
@@ -109,17 +118,25 @@ func WaitUntilReady(timeout time.Duration) (StatusInfo, error) {
 		timeout = 45 * time.Second
 	}
 
-	deadline := time.Now().Add(timeout)
+	deadline := nowFunc().Add(timeout)
 	var last StatusInfo
+	var lastProbeErr error
 	for {
-		last = CurrentStatus()
+		last = currentStatusFunc()
 		if last.Ready {
-			return last, nil
+			if err := localDNSProbeFunc(); err == nil {
+				return last, nil
+			} else {
+				lastProbeErr = err
+			}
 		}
-		if time.Now().After(deadline) {
+		if nowFunc().After(deadline) {
+			if lastProbeErr != nil {
+				return last, fmt.Errorf("uBlockDNS did not become ready within %v: local DNS probe failed: %w", timeout, lastProbeErr)
+			}
 			return last, fmt.Errorf("uBlockDNS did not become ready within %v", timeout)
 		}
-		time.Sleep(time.Second)
+		sleepFunc(time.Second)
 	}
 }
 

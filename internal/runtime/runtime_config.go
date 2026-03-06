@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -17,6 +16,8 @@ type RuntimeConfig struct {
 	APIServer    string
 	AccountToken string
 }
+
+var loadPersistedTokenFunc = state.LoadPersistedToken
 
 func resolveRuntimeConfig(profileID, overrideDoHServer, overrideAPIServer, accountToken string) (RuntimeConfig, error) {
 	dohServer := ResolveDoHServer(overrideDoHServer)
@@ -40,12 +41,11 @@ func resolveAccountToken(profileID, accountToken string) (string, error) {
 	if token := strings.TrimSpace(os.Getenv("UBLOCKDNS_ACCOUNT_TOKEN")); token != "" {
 		return token, nil
 	}
-	persisted, err := state.LoadPersistedToken(profileID)
+	persisted, err := loadPersistedTokenFunc(profileID)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", nil
-		}
-		return "", err
+		// Preserve pre-refactor behavior: token load failures should only
+		// disable the rules stream, not block runtime startup entirely.
+		return "", nil
 	}
 	return persisted, nil
 }

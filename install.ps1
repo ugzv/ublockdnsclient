@@ -76,12 +76,24 @@ function Stop-ExistingInstall {
 
     Write-Host "Existing installation detected, stopping previous service ..."
     try {
-        & $ExePath stop
+        & $ExePath uninstall
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Previous stop returned exit code $LASTEXITCODE. Continuing with best-effort cleanup."
+            Write-Warning "Previous uninstall returned exit code $LASTEXITCODE. Trying stop fallback."
+            & $ExePath stop
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Previous stop fallback returned exit code $LASTEXITCODE. Continuing with best-effort cleanup."
+            }
         }
     } catch {
-        Write-Warning "Previous stop failed: $($_.Exception.Message). Continuing with best-effort cleanup."
+        Write-Warning "Previous uninstall failed: $($_.Exception.Message). Trying stop fallback."
+        try {
+            & $ExePath stop
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Previous stop fallback returned exit code $LASTEXITCODE. Continuing with best-effort cleanup."
+            }
+        } catch {
+            Write-Warning "Previous stop fallback failed: $($_.Exception.Message). Continuing with best-effort cleanup."
+        }
     }
 
     $deadline = (Get-Date).AddSeconds(20)
