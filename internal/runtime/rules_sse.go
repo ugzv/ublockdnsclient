@@ -54,7 +54,7 @@ func consumeRulesStream(ctx context.Context, apiServer, profileID, accountToken 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	scanner := bufio.NewScanner(newTimeoutReader(resp.Body, sseReadTimeout))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

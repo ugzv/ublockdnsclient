@@ -37,7 +37,7 @@ func queryDNSUDP(serverAddr, hostname string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.SetDeadline(time.Now().Add(4 * time.Second)); err != nil {
 		return nil, err

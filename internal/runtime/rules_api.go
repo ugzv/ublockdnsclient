@@ -50,7 +50,7 @@ func fetchRulesVersion(ctx context.Context, apiServer, profileID, accountToken s
 	if err != nil {
 		return out, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return out, err
@@ -75,7 +75,7 @@ func doRulesGET(ctx context.Context, apiServer, profileID, accountToken, suffix,
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		endpoint := strings.TrimPrefix(suffix, "/")
 		return nil, fmt.Errorf("%s status %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(string(body)))
