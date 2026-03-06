@@ -76,12 +76,12 @@ function Stop-ExistingInstall {
 
     Write-Host "Existing installation detected, stopping previous service ..."
     try {
-        & $ExePath uninstall
+        & $ExePath stop
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Previous uninstall returned exit code $LASTEXITCODE. Continuing with best-effort cleanup."
+            Write-Warning "Previous stop returned exit code $LASTEXITCODE. Continuing with best-effort cleanup."
         }
     } catch {
-        Write-Warning "Previous uninstall failed: $($_.Exception.Message). Continuing with best-effort cleanup."
+        Write-Warning "Previous stop failed: $($_.Exception.Message). Continuing with best-effort cleanup."
     }
 
     $deadline = (Get-Date).AddSeconds(20)
@@ -182,32 +182,16 @@ if ($LASTEXITCODE -ne 0) {
     throw "Service installation failed with exit code $LASTEXITCODE."
 }
 
-$serviceReady = $false
-$lastStatusText = ""
-$lastServiceState = "unknown"
-$maxChecks = 45
-for ($check = 1; $check -le $maxChecks; $check++) {
-    $statusLines = & $exePath status 2>&1
-    $statusExitCode = $LASTEXITCODE
-    $lastStatusText = (($statusLines | ForEach-Object { "$_" }) -join "`n").Trim()
-    if ($lastStatusText -match '(?im)^Service:\s*(.+)$') {
-        $lastServiceState = $Matches[1].Trim()
+Write-Host "Waiting for uBlockDNS to become ready ..."
+$readyOutput = & $exePath wait-ready -timeout 45s -json 2>&1
+$readyExitCode = $LASTEXITCODE
+if ($readyExitCode -ne 0) {
+    $statusOutput = & $exePath status -json 2>&1
+    $statusSummary = (($statusOutput | ForEach-Object { "$_" }) -join "`n").Trim()
+    if (-not $statusSummary) {
+        $statusSummary = "(no status output)"
     }
-
-    if ($statusExitCode -eq 0 -and $lastStatusText -match '(?im)^Status:\s*active\b') {
-        $serviceReady = $true
-        break
-    }
-
-    if ($check -eq 1 -or ($check % 5 -eq 0)) {
-        Write-Host "Waiting for uBlockDNS to report active status ($check/$maxChecks) ..."
-    }
-    Start-Sleep -Seconds 1
-}
-
-if (-not $serviceReady) {
-    $statusSummary = if ($lastStatusText) { $lastStatusText } else { "(no status output)" }
-    throw "uBlockDNS did not report active status (service: $lastServiceState). Last status output: $statusSummary"
+    throw "uBlockDNS did not report ready status. Last machine status: $statusSummary"
 }
 
 Write-Host "Done."

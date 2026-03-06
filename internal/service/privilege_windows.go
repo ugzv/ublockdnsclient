@@ -1,6 +1,6 @@
 //go:build windows
 
-package app
+package service
 
 func hasInstallPrivileges() bool {
 	// Windows installer enforces elevation before invoking the binary.

@@ -1,4 +1,4 @@
-package app
+package runtime
 
 import (
 	"context"
@@ -8,7 +8,15 @@ import (
 	"time"
 
 	"github.com/nextdns/nextdns/host"
+	"github.com/ugzv/ublockdnsclient/internal/core"
 )
+
+var bootstrapResolvers = []string{
+	"1.1.1.1:53",
+	"8.8.8.8:53",
+	"9.9.9.9:53",
+	"1.0.0.1:53",
+}
 
 // resolveBootstrapIPs resolves a hostname via public resolvers (UDP/TCP),
 // bypassing the system resolver. This prevents a circular dependency when
@@ -26,28 +34,20 @@ func resolveBootstrapIPs(hostname string) ([]string, error) {
 				continue
 			}
 			for _, addr := range addrs {
-				if _, ok := seen[addr]; ok {
-					continue
-				}
-				seen[addr] = struct{}{}
-				out = append(out, addr)
+				out = core.AppendUniqueString(out, seen, addr)
 			}
 		}
 	}
 
 	// Fallback for locked-down networks that block direct DNS to public resolvers.
 	// Only use system DNS if it's not already pointed to this local proxy.
-	if len(out) == 0 && !hasDNS127001(host.DNS()) {
+	if len(out) == 0 && !core.HasDNS127001(host.DNS()) {
 		addrs, err := lookupHostSystem(hostname)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("system resolver: %v", err))
 		} else {
 			for _, addr := range addrs {
-				if _, ok := seen[addr]; ok {
-					continue
-				}
-				seen[addr] = struct{}{}
-				out = append(out, addr)
+				out = core.AppendUniqueString(out, seen, addr)
 			}
 		}
 	}

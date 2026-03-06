@@ -58,6 +58,8 @@ ublockdns uninstall                          Remove service and restore DNS
 ublockdns start                              Start the service
 ublockdns stop                               Stop the service
 ublockdns status                             Show service state and DNS config
+ublockdns status -json                       Show machine-readable status
+ublockdns wait-ready -timeout 45s            Wait until service and DNS are active
 ublockdns version                            Print version
 ```
 

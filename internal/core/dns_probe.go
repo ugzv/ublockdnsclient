@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"encoding/binary"
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func checkLocalDNSProxy(hostname string) error {
+func CheckLocalDNSProxy(hostname string) error {
 	resp, err := queryDNSUDP("127.0.0.1:53", hostname)
 	if err != nil {
 		return fmt.Errorf("dns query failed via local proxy: %w", err)
@@ -32,7 +32,6 @@ func checkLocalDNSProxy(hostname string) error {
 
 func queryDNSUDP(serverAddr, hostname string) ([]byte, error) {
 	id := uint16(rand.New(rand.NewSource(time.Now().UnixNano())).Intn(65535))
-	q := buildDNSQuery(id, hostname)
 
 	conn, err := net.DialTimeout("udp", serverAddr, 2*time.Second)
 	if err != nil {
@@ -44,23 +43,12 @@ func queryDNSUDP(serverAddr, hostname string) ([]byte, error) {
 		return nil, err
 	}
 
-	if _, err := conn.Write(q); err != nil {
-		return nil, err
-	}
-
-	buf := make([]byte, 2048)
-	n, err := conn.Read(buf)
-	if err != nil {
-		return nil, err
-	}
-	resp := buf[:n]
-	if len(resp) < 2 {
-		return nil, errors.New("short DNS response")
-	}
-	if binary.BigEndian.Uint16(resp[0:2]) != id {
-		return nil, errors.New("mismatched DNS transaction id")
-	}
-	return resp, nil
+	return ExchangeDNSQuery(id, hostname, func(payload, buf []byte) (int, error) {
+		if _, err := conn.Write(payload); err != nil {
+			return 0, err
+		}
+		return conn.Read(buf)
+	})
 }
 
 func buildDNSQuery(id uint16, hostname string) []byte {

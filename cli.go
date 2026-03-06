@@ -6,8 +6,11 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"time"
 
-	"github.com/ugzv/ublockdnsclient/internal/app"
+	"github.com/ugzv/ublockdnsclient/internal/core"
+	app_runtime "github.com/ugzv/ublockdnsclient/internal/runtime"
+	"github.com/ugzv/ublockdnsclient/internal/service"
 )
 
 func usage() {
@@ -25,7 +28,8 @@ Usage:
                       [-server <url>] Optional DoH server base URL (for local/dev)
                       [-api-server <url>] Optional API server URL (for local/dev)
                       [-token <account-token>] Optional account token for instant rules update cache flush
-  ublockdns status                     Show current status
+  ublockdns status    [-json]          Show current status
+  ublockdns wait-ready [-timeout <d>]  Wait until service and DNS are active
   ublockdns version                    Print version
 
 `, version)
@@ -34,8 +38,15 @@ Usage:
 type profileCommandSpec struct {
 	startMessage string
 	failPrefix   string
-	run          func(profileID, dohServer, apiServer, token string) error
+	run          func(args profileArgs) error
 	onSuccess    func(normalizedProfileID string)
+}
+
+type profileArgs struct {
+	profileID string
+	dohServer string
+	apiServer string
+	token     string
 }
 
 func main() {
@@ -59,59 +70,88 @@ func main() {
 		executeProfileCommand(profileCommandSpec{
 			startMessage: "Starting uBlockDNS in foreground...",
 			failPrefix:   "Error",
-			run: func(profileID, dohServer, apiServer, token string) error {
-				return app.Run(version, profileID, dohServer, apiServer, token)
+			run: func(args profileArgs) error {
+				return app_runtime.Run(version, args.profileID, args.dohServer, args.apiServer, args.token)
 			},
 		})
 
 	case "install":
-		profileID := flagValue("-profile")
-		dohServer := flagValue("-server")
-		apiServer := flagValue("-api-server")
-		token := flagValue("-token")
-		normalizedProfileID, err := app.NormalizeProfileIDInput(profileID)
+		args, err := parseProfileArgs()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println("Installing uBlockDNS service...")
-		outcome, err := app.InstallDetailed(normalizedProfileID, dohServer, apiServer, token)
+		outcome, err := service.InstallDetailed(args.profileID, args.dohServer, args.apiServer, args.token)
 		if err != nil {
 			log.Fatalf("Install failed: %v", err)
 		}
 		switch outcome {
-		case app.InstallOutcomeSwitched:
+		case service.InstallOutcomeSwitched:
 			fmt.Println("uBlockDNS profile switched and activated.")
-		case app.InstallOutcomeUpdated:
+		case service.InstallOutcomeUpdated:
 			fmt.Println("uBlockDNS updated and activated.")
 		default:
 			fmt.Println("uBlockDNS installed and activated.")
 		}
-		fmt.Printf("All DNS queries now route through your profile: %s\n", normalizedProfileID)
+		fmt.Printf("All DNS queries now route through your profile: %s\n", args.profileID)
 
 	case "uninstall":
 		fmt.Println("Uninstalling uBlockDNS service...")
-		if err := app.Uninstall(); err != nil {
+		if err := service.Uninstall(); err != nil {
 			log.Fatalf("Uninstall failed: %v", err)
 		}
 		fmt.Println("uBlockDNS uninstalled. DNS restored to defaults.")
 
 	case "start":
 		fmt.Println("Starting uBlockDNS service...")
-		if err := app.ServiceStart(); err != nil {
+		if err := service.ServiceStart(); err != nil {
 			log.Fatalf("Start failed: %v", err)
 		}
 		fmt.Println("uBlockDNS started.")
 
 	case "stop":
 		fmt.Println("Stopping uBlockDNS service...")
-		if err := app.ServiceStop(); err != nil {
+		if err := service.ServiceStop(); err != nil {
 			log.Fatalf("Stop failed: %v", err)
 		}
 		fmt.Println("uBlockDNS stopped.")
 
 	case "status":
-		app.ShowStatus()
+		if flagPresent("-json") {
+			if err := service.ShowStatusJSON(); err != nil {
+				log.Fatalf("Status failed: %v", err)
+			}
+			return
+		}
+		service.ShowStatus()
+
+	case "wait-ready":
+		timeout, err := parseDurationFlag("-timeout", 45*time.Second)
+		if err != nil {
+			log.Fatalf("wait-ready failed: %v", err)
+		}
+		info, err := service.WaitUntilReady(timeout)
+		if err != nil {
+			if flagPresent("-json") {
+				if jsonErr := service.ShowStatusJSON(); jsonErr != nil {
+					log.Printf("Status failed: %v", jsonErr)
+				}
+			} else {
+				service.ShowStatus()
+			}
+			log.Fatalf("wait-ready failed: %v", err)
+		}
+		if flagPresent("-json") {
+			if err := service.ShowStatusJSON(); err != nil {
+				log.Fatalf("wait-ready failed: %v", err)
+			}
+			return
+		}
+		service.ShowStatus()
+		if info.Ready {
+			fmt.Println("uBlockDNS is ready.")
+		}
 
 	default:
 		usage()
@@ -121,11 +161,7 @@ func main() {
 }
 
 func executeProfileCommand(spec profileCommandSpec) {
-	profileID := flagValue("-profile")
-	dohServer := flagValue("-server")
-	apiServer := flagValue("-api-server")
-	token := flagValue("-token")
-	normalizedProfileID, err := app.NormalizeProfileIDInput(profileID)
+	args, err := parseProfileArgs()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -134,12 +170,25 @@ func executeProfileCommand(spec profileCommandSpec) {
 	if spec.startMessage != "" {
 		fmt.Println(spec.startMessage)
 	}
-	if err := spec.run(normalizedProfileID, dohServer, apiServer, token); err != nil {
+	if err := spec.run(args); err != nil {
 		log.Fatalf("%s: %v", spec.failPrefix, err)
 	}
 	if spec.onSuccess != nil {
-		spec.onSuccess(normalizedProfileID)
+		spec.onSuccess(args.profileID)
 	}
+}
+
+func parseProfileArgs() (profileArgs, error) {
+	profileID, err := core.NormalizeProfileIDInput(flagValue("-profile"))
+	if err != nil {
+		return profileArgs{}, err
+	}
+	return profileArgs{
+		profileID: profileID,
+		dohServer: flagValue("-server"),
+		apiServer: flagValue("-api-server"),
+		token:     flagValue("-token"),
+	}, nil
 }
 
 func pauseBeforeExit() {
@@ -165,9 +214,30 @@ func flagValue(name string) string {
 	return ""
 }
 
+func flagPresent(name string) bool {
+	for _, arg := range os.Args {
+		if arg == name {
+			return true
+		}
+	}
+	return false
+}
+
+func parseDurationFlag(name string, fallback time.Duration) (time.Duration, error) {
+	raw := flagValue(name)
+	if raw == "" {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s value %q: %w", name, raw, err)
+	}
+	return d, nil
+}
+
 func isKnownFlag(arg string) bool {
 	switch arg {
-	case "-profile", "-server", "-api-server", "-token":
+	case "-profile", "-server", "-api-server", "-token", "-json", "-timeout":
 		return true
 	default:
 		return false

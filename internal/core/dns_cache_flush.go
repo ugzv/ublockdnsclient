@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"errors"
@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func flushDNSCaches() error {
+func FlushDNSCaches() error {
 	type cmdSpec struct {
 		name string
 		args []string
@@ -36,7 +36,7 @@ func flushDNSCaches() error {
 
 	var errs []string
 	for _, c := range commands {
-		if err := runCommand(c.name, c.args...); err != nil {
+		if err := RunCommand(c.name, c.args...); err != nil {
 			errs = append(errs, fmt.Sprintf("%s %s: %v", c.name, strings.Join(c.args, " "), err))
 			continue
 		}

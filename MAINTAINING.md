@@ -32,6 +32,11 @@
 
 ## Notes
 
+- Internal package layout:
+  - `internal/core`: shared helpers, validation, config constants, DNS probe/cache utilities
+  - `internal/runtime`: proxy startup, upstream endpoint handling, rules stream/watcher logic
+  - `internal/service`: install/uninstall, service control, status/readiness, privilege checks
+  - `internal/state`: persisted token and install-state storage
 - Windows token path: `%ProgramData%\\ublockdns`.
 - Unix token path: `/etc/ublockdns`.
 - Release builds are managed by GoReleaser (`.goreleaser.yml`).

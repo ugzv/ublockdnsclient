@@ -1,4 +1,4 @@
-package app
+package runtime
 
 import (
 	"context"
@@ -8,6 +8,14 @@ import (
 	"github.com/nextdns/nextdns/host"
 	"github.com/nextdns/nextdns/resolver/endpoint"
 )
+
+const dohProbeDomain = "example.com"
+
+var fallbackDNSServers = []string{
+	"1.1.1.1:53",
+	"8.8.8.8:53",
+	"9.9.9.9:53",
+}
 
 func newEndpointManager(dohEndpoint endpoint.Endpoint) *endpoint.Manager {
 	m := &endpoint.Manager{
@@ -21,8 +29,14 @@ func newEndpointManager(dohEndpoint endpoint.Endpoint) *endpoint.Manager {
 		InitEndpoint: dohEndpoint,
 	}
 
-	// Ensure plaintext DNS fallback remains available as last-resort connectivity.
+	// Override the upstream library probe domain so startup checks do not emit
+	// provider-branded verification lookups on first use.
 	m.EndpointTester = func(e endpoint.Endpoint) endpoint.Tester {
+		if e.Protocol() == endpoint.ProtocolDOH {
+			return func(ctx context.Context, _ string) error {
+				return testEndpointDomain(ctx, e, dohProbeDomain)
+			}
+		}
 		if e.Protocol() == endpoint.ProtocolDNS {
 			return func(ctx context.Context, testDomain string) error { return nil }
 		}
