@@ -4,7 +4,7 @@ set -e
 # ─────────────────────────────────────────────────────────────
 # uBlockDNS Installer
 # Works on: Linux (all distros), macOS
-# Usage:    curl -sSf <url>/install.sh | sudo sh -s -- <profile-id> [account-token]
+# Usage:    curl -sSf <url>/install.sh | sh -s -- <profile-id> [account-token]
 # ─────────────────────────────────────────────────────────────
 
 REPO="ugzv/ublockdnsclient"
@@ -236,7 +236,7 @@ main() {
         error "Missing profile ID."
         printf "\n"
         printf "  ${BOLD}Usage:${RESET}\n"
-        printf "    curl -sSf https://github.com/${REPO}/releases/latest/download/install.sh | sudo sh -s -- ${DIM}<profile-id>${RESET}\n"
+        printf "    curl -sSf https://github.com/${REPO}/releases/latest/download/install.sh | sh -s -- ${DIM}<profile-id>${RESET}\n"
         printf "\n"
         printf "  Get your profile ID at ${BOLD}https://ublockdns.com${RESET}\n"
         printf "\n"

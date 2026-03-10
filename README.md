@@ -1,8 +1,18 @@
 # uBlockDNS Client
 
-DNS-level ad and tracker blocking for your entire device. Uses community-maintained filter lists (EasyList, EasyPrivacy, and more), applied at the DNS layer so every app and browser is covered without per-device extensions.
+uBlockDNS Client brings DNS-level ad and tracker blocking to your entire device. It uses community-maintained filter lists such as EasyList and EasyPrivacy, applied at the DNS layer so apps, browsers, and background services are covered without per-browser extensions.
 
 **Website:** [ublockdns.com](https://ublockdns.com)
+
+uBlockDNS Client is intended for desktop and server environments where you want one install point, system-wide protection, and remote configuration through the uBlockDNS dashboard.
+
+## Highlights
+
+- System-wide DNS filtering for browsers, apps, and background traffic
+- Encrypted upstream DNS-over-HTTPS connection to the uBlockDNS service
+- Real-time filter and custom rule updates from your dashboard
+- Local service model with status checks and service management commands
+- Cross-platform support for macOS, Linux, Windows, and FreeBSD
 
 ## Install
 
@@ -14,6 +24,8 @@ Quick install for macOS and Linux:
 curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>
 ```
 
+During installation, you may be prompted for your Mac or Linux administrator password to update system DNS settings.
+
 Verify installer script checksum (Linux):
 
 ```sh
@@ -23,7 +35,7 @@ grep " install.sh$" SCRIPT_SHA256SUMS | sha256sum -c -
 sh install.sh <profile-id>
 ```
 
-Windows (PowerShell as Administrator):
+Windows 10 or later (PowerShell as Administrator):
 
 ```powershell
 iwr https://ublockdns.com/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
@@ -41,6 +53,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 ```
 
 A Windows GUI installer (.exe) is also available on the [releases page](https://github.com/ugzv/ublockdnsclient/releases).
+Windows 7, Windows 8, and Windows 8.1 are not supported by the published binaries.
 
 ### Other platforms
 
@@ -63,13 +76,13 @@ ublockdns wait-ready -timeout 45s            Wait until service and DNS are acti
 ublockdns version                            Print version
 ```
 
-Manage your filter lists, custom rules, and query log from the [dashboard](https://ublockdns.com).
+Manage your filter lists, custom rules, and query log from the [dashboard](https://ublockdns.com). The CLI is intentionally narrow: install the local service, verify it is healthy, and let the dashboard handle policy changes.
 
 ## How it works
 
-The client runs a local DNS proxy on `127.0.0.1:53` and forwards all queries to the uBlockDNS server over encrypted DNS-over-HTTPS. The server checks each query against your enabled filter lists and returns a block response for matched domains.
+The client runs a local DNS proxy on `127.0.0.1:53` and forwards all queries to the uBlockDNS service over encrypted DNS-over-HTTPS. The service evaluates each query against the filter lists and custom rules enabled for your profile, then returns either the normal DNS answer or a block response.
 
-When you change filter lists or custom rules in the dashboard, the client receives the update in real time and flushes your local DNS cache automatically.
+When you update filter lists or custom rules in the dashboard, the client receives those changes in real time and flushes the local DNS cache automatically so new decisions take effect quickly.
 
 ## Build from source
 

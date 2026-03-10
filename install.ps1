@@ -19,11 +19,87 @@ if (Test-Path $commonPath) {
         $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
         return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
+
+    function Assert-SupportedWindowsVersion {
+        $versionInfo = [System.Environment]::OSVersion.Version
+        if ($versionInfo.Major -lt 10) {
+            throw "Windows 10 or later is required. Current version detected: $($versionInfo.ToString()). The published uBlockDNS binaries are built with a Go toolchain that no longer supports Windows 7/8/8.1."
+        }
+    }
+
+    function Enable-Tls12 {
+        try {
+            $protocolType = [System.Net.SecurityProtocolType]
+            if ([Enum]::GetNames($protocolType) -contains "Tls12") {
+                [System.Net.ServicePointManager]::SecurityProtocol = `
+                    [System.Net.ServicePointManager]::SecurityProtocol -bor $protocolType::Tls12
+            }
+        } catch {}
+    }
+
+    function Invoke-DownloadFile {
+        param(
+            [string]$Uri,
+            [string]$OutFile
+        )
+
+        Enable-Tls12
+
+        $client = New-Object System.Net.WebClient
+        try {
+            $client.Headers.Add("User-Agent", "uBlockDNS-Installer")
+            $client.DownloadFile($Uri, $OutFile)
+        } finally {
+            $client.Dispose()
+        }
+    }
+
+    function Get-Sha256Hex {
+        param([string]$Path)
+
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            $sha256 = [System.Security.Cryptography.SHA256]::Create()
+            try {
+                $hashBytes = $sha256.ComputeHash($stream)
+            } finally {
+                $sha256.Dispose()
+            }
+        } finally {
+            $stream.Dispose()
+        }
+
+        return ([System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLowerInvariant())
+    }
+
+    function Resolve-GitHubLatestTag {
+        param([string]$Repo)
+
+        Enable-Tls12
+
+        $request = [System.Net.HttpWebRequest]::Create("https://github.com/$Repo/releases/latest")
+        $request.Method = "HEAD"
+        $request.AllowAutoRedirect = $true
+        $request.UserAgent = "uBlockDNS-Installer"
+
+        $response = $request.GetResponse()
+        try {
+            $segments = $response.ResponseUri.AbsolutePath.TrimEnd('/').Split('/')
+            if ($segments.Length -eq 0) {
+                throw "GitHub latest release redirect did not include a tag."
+            }
+            return $segments[$segments.Length - 1]
+        } finally {
+            $response.Close()
+        }
+    }
 }
 
 if (-not (Test-Admin)) {
     throw "Please run this installer from an elevated PowerShell session (Run as Administrator)."
 }
+
+Assert-SupportedWindowsVersion
 
 $repo = "ugzv/ublockdnsclient"
 $binary = "ublockdns"
@@ -36,8 +112,7 @@ $arch = switch ($env:PROCESSOR_ARCHITECTURE.ToLowerInvariant()) {
 }
 
 if (-not $Version) {
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
-    $Version = $release.tag_name
+    $Version = Resolve-GitHubLatestTag -Repo $repo
 }
 
 if (-not $Version) {
@@ -45,19 +120,8 @@ if (-not $Version) {
 }
 
 $asset = "$binary-windows-$arch.exe"
-$releaseTagApi = "https://api.github.com/repos/$repo/releases/tags/$Version"
-$release = Invoke-RestMethod -Uri $releaseTagApi
-$assetInfo = $release.assets | Where-Object { $_.name -eq $asset } | Select-Object -First 1
-if (-not $assetInfo) {
-    $available = ($release.assets | ForEach-Object { $_.name }) -join ", "
-    throw "Release $Version does not contain asset '$asset'. Available assets: $available"
-}
-$url = $assetInfo.browser_download_url
-$sumsAssetInfo = $release.assets | Where-Object { $_.name -eq "SHA256SUMS" } | Select-Object -First 1
-if (-not $sumsAssetInfo) {
-    throw "Release $Version does not contain SHA256SUMS."
-}
-$sumsUrl = $sumsAssetInfo.browser_download_url
+$url = "https://github.com/$repo/releases/download/$Version/$asset"
+$sumsUrl = "https://github.com/$repo/releases/download/$Version/SHA256SUMS"
 
 $installDir = Join-Path $env:ProgramFiles "uBlockDNS"
 $exePath = Join-Path $installDir "$binary.exe"
@@ -117,12 +181,14 @@ if ($AccountToken) {
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 
+Enable-Tls12
+
 Write-Host "Downloading $url ..."
 $downloaded = $false
 for ($attempt = 1; $attempt -le 3; $attempt++) {
     Write-Host "Download attempt $attempt/3 ..."
     try {
-        Invoke-WebRequest -Uri $url -OutFile $tempExe
+        Invoke-DownloadFile -Uri $url -OutFile $tempExe
         $downloaded = $true
         break
     } catch {
@@ -138,7 +204,7 @@ if (-not $downloaded) {
 }
 
 Write-Host "Downloading checksum manifest ..."
-Invoke-WebRequest -Uri $sumsUrl -OutFile $tempSums
+Invoke-DownloadFile -Uri $sumsUrl -OutFile $tempSums
 
 $expectedHash = $null
 foreach ($line in Get-Content -Path $tempSums) {
@@ -153,7 +219,7 @@ if (-not $expectedHash) {
     throw "Could not find checksum for '$asset' in SHA256SUMS."
 }
 
-$actualHash = (Get-FileHash -Path $tempExe -Algorithm SHA256).Hash.ToLowerInvariant()
+$actualHash = Get-Sha256Hex -Path $tempExe
 if ($actualHash -ne $expectedHash) {
     throw "SHA-256 verification failed for '$asset'. Expected $expectedHash, got $actualHash."
 }

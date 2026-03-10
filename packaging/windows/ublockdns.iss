@@ -52,6 +52,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
 Source: "{#SourceInstallPs1}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceSetupPs1}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\\..\\scripts\\windows\\common.ps1"; DestDir: "{app}\\scripts\\windows"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\\uBlockDNS\\uBlockDNS Status"; Filename: "{app}\\{#MyAppExeName}"; Parameters: "status"

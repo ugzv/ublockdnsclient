@@ -27,6 +27,40 @@ if (Test-Path $commonPath) {
         $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
         return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     }
+
+    function Assert-SupportedWindowsVersion {
+        $versionInfo = [System.Environment]::OSVersion.Version
+        if ($versionInfo.Major -lt 10) {
+            throw "Windows 10 or later is required. Current version detected: $($versionInfo.ToString()). The published uBlockDNS binaries are built with a Go toolchain that no longer supports Windows 7/8/8.1."
+        }
+    }
+
+    function Enable-Tls12 {
+        try {
+            $protocolType = [System.Net.SecurityProtocolType]
+            if ([Enum]::GetNames($protocolType) -contains "Tls12") {
+                [System.Net.ServicePointManager]::SecurityProtocol = `
+                    [System.Net.ServicePointManager]::SecurityProtocol -bor $protocolType::Tls12
+            }
+        } catch {}
+    }
+
+    function Invoke-DownloadFile {
+        param(
+            [string]$Uri,
+            [string]$OutFile
+        )
+
+        Enable-Tls12
+
+        $client = New-Object System.Net.WebClient
+        try {
+            $client.Headers.Add("User-Agent", "uBlockDNS-Installer")
+            $client.DownloadFile($Uri, $OutFile)
+        } finally {
+            $client.Dispose()
+        }
+    }
 }
 
 if (-not (Test-Admin)) {
@@ -68,6 +102,9 @@ try {
 } catch {}
 
 try {
+    Assert-SupportedWindowsVersion
+    Enable-Tls12
+
     Write-Host "uBlockDNS Setup (Windows)"
     Write-Host "---------------------------"
     if ($Version) {
@@ -102,7 +139,7 @@ try {
         foreach ($installerUrl in $installerUrls) {
             try {
                 Write-Host "Downloading install.ps1 from $installerUrl ..."
-                Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath
+                Invoke-DownloadFile -Uri $installerUrl -OutFile $installerPath
                 $downloadedInstaller = $true
                 break
             } catch {
