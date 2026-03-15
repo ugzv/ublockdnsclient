@@ -12,6 +12,7 @@ BINARY="ublockdns"
 INSTALL_DIR="/usr/local/bin"
 TMP_BIN=""
 TMP_SUMS=""
+READY_STATUS_JSON=""
 
 # ── Terminal colors ──────────────────────────────────────────
 
@@ -82,8 +83,9 @@ verify_sha256() {
 }
 
 wait_for_ready() {
+    READY_STATUS_JSON=""
     info "Waiting for uBlockDNS to become ready..."
-    if run_as_root "${INSTALL_DIR}/${BINARY}" wait-ready -timeout 45s >/dev/null; then
+    if READY_STATUS_JSON=$(run_as_root "${INSTALL_DIR}/${BINARY}" wait-ready -timeout 45s -json 2>/dev/null); then
         success "uBlockDNS is ready."
         return 0
     fi
@@ -367,7 +369,11 @@ main() {
     if ! wait_for_ready; then
         warn "uBlockDNS did not report ready status."
         warn "Current machine status:"
-        run_as_root "${INSTALL_DIR}/${BINARY}" status -json || true
+        if [ -n "$READY_STATUS_JSON" ]; then
+            printf '%s\n' "$READY_STATUS_JSON"
+        else
+            run_as_root "${INSTALL_DIR}/${BINARY}" status -json || true
+        fi
         printf "  Check:     ${BOLD}ublockdns status${RESET}\n"
         printf "  Uninstall: ${BOLD}sudo ublockdns uninstall${RESET}\n"
         printf "\n"

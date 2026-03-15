@@ -70,9 +70,10 @@ ublockdns install   -profile <profile-id>   Install as system service
 ublockdns uninstall                          Remove service and restore DNS
 ublockdns start                              Start the service
 ublockdns stop                               Stop the service
-ublockdns status                             Show service state and DNS config
-ublockdns status -json                       Show machine-readable status
+ublockdns status                             Show service state and readiness details
+ublockdns status -json                       Show machine-readable status with ready_code and probe_error
 ublockdns wait-ready -timeout 45s            Wait until service and DNS are active
+ublockdns wait-ready -timeout 45s -json      Emit machine-readable readiness state for automation
 ublockdns version                            Print version
 ```
 

@@ -134,21 +134,24 @@ func main() {
 		info, err := service.WaitUntilReady(timeout)
 		if err != nil {
 			if flagPresent("-json") {
-				if jsonErr := service.ShowStatusJSON(); jsonErr != nil {
+				if jsonErr := service.WriteStatusJSON(info); jsonErr != nil {
 					log.Printf("Status failed: %v", jsonErr)
+					os.Exit(1)
 				}
+				os.Exit(1)
 			} else {
-				service.ShowStatus()
+				service.ShowStatusInfo(info)
 			}
-			log.Fatalf("wait-ready failed: %v", err)
+			fmt.Fprintf(os.Stderr, "wait-ready failed: %v\n", err)
+			os.Exit(1)
 		}
 		if flagPresent("-json") {
-			if err := service.ShowStatusJSON(); err != nil {
+			if err := service.WriteStatusJSON(info); err != nil {
 				log.Fatalf("wait-ready failed: %v", err)
 			}
 			return
 		}
-		service.ShowStatus()
+		service.ShowStatusInfo(info)
 		if info.Ready {
 			fmt.Println("uBlockDNS is ready.")
 		}

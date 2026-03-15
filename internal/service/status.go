@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"runtime"
@@ -16,28 +17,36 @@ import (
 )
 
 type StatusInfo struct {
-	Status    string   `json:"status"`
-	Ready     bool     `json:"ready"`
-	SystemDNS []string `json:"system_dns"`
-	LocalDNS  bool     `json:"local_dns"`
-	Service   string   `json:"service_state"`
-	ProfileID string   `json:"profile_id,omitempty"`
-	DoHServer string   `json:"doh_server,omitempty"`
-	APIServer string   `json:"api_server,omitempty"`
-	Warnings  []string `json:"warnings,omitempty"`
+	Status      string   `json:"status"`
+	Ready       bool     `json:"ready"`
+	ReadyCode   string   `json:"ready_code,omitempty"`
+	ReadyDetail string   `json:"ready_detail,omitempty"`
+	ProbeError  string   `json:"probe_error,omitempty"`
+	SystemDNS   []string `json:"system_dns"`
+	LocalDNS    bool     `json:"local_dns"`
+	Service     string   `json:"service_state"`
+	ProfileID   string   `json:"profile_id,omitempty"`
+	DoHServer   string   `json:"doh_server,omitempty"`
+	APIServer   string   `json:"api_server,omitempty"`
+	Warnings    []string `json:"warnings,omitempty"`
 }
+
+const readinessProbeHost = "example.com"
 
 var (
 	currentStatusFunc = CurrentStatus
 	localDNSProbeFunc = func() error {
-		return core.CheckLocalDNSProxy("example.com")
+		return core.CheckLocalDNSProxy(readinessProbeHost)
 	}
-	nowFunc   = time.Now
-	sleepFunc = time.Sleep
+	serviceStateFunc = serviceState
+	systemDNSFunc    = currentSystemDNS
+	loadInstallState = state.LoadInstallState
+	nowFunc          = time.Now
+	sleepFunc        = time.Sleep
 )
 
 func serviceCurrentlyInstalled() bool {
-	st, err := serviceState()
+	st, err := serviceStateFunc()
 	if err != nil {
 		return false
 	}
@@ -45,35 +54,49 @@ func serviceCurrentlyInstalled() bool {
 }
 
 func CurrentStatus() StatusInfo {
-	dns := currentSystemDNS()
+	dns := systemDNSFunc()
 	localDNS := core.HasDNS127001(dns)
 
 	svcState := "unknown"
-	if st, err := serviceState(); err == nil {
+	if st, err := serviceStateFunc(); err == nil {
 		svcState = st
 	}
 
-	ready := localDNS
-	if svcState == "stopped" || svcState == "not-installed" {
-		ready = false
-	}
-
-	status := "inactive"
-	if ready {
-		status = "active"
-	}
-
 	info := StatusInfo{
-		Status:    status,
-		Ready:     ready,
+		Status:    "inactive",
+		Ready:     false,
 		SystemDNS: dns,
 		LocalDNS:  localDNS,
 		Service:   svcState,
 	}
-	if st, err := state.LoadInstallState(); err == nil {
+	if st, err := loadInstallState(); err == nil {
 		info.ProfileID = st.ProfileID
 		info.DoHServer = st.DoHServer
 		info.APIServer = st.APIServer
+	}
+
+	switch {
+	case svcState == "not-installed":
+		info.ReadyCode = "service_not_installed"
+		info.ReadyDetail = "uBlockDNS service is not installed."
+	case svcState == "stopped":
+		info.ReadyCode = "service_stopped"
+		info.ReadyDetail = "uBlockDNS service is installed but not running."
+	case !localDNS:
+		info.ReadyCode = "dns_not_local"
+		info.ReadyDetail = "System DNS does not point to 127.0.0.1."
+	default:
+		if err := localDNSProbeFunc(); err != nil {
+			info.ReadyCode = "local_dns_probe_failed"
+			info.ReadyDetail = "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe."
+			info.ProbeError = err.Error()
+			info.Warnings = append(info.Warnings, fmt.Sprintf("local DNS probe failed: %v", err))
+		} else {
+			info.Status = "active"
+			info.Ready = true
+			info.ReadyCode = "ready"
+			info.ReadyDetail = "uBlockDNS is responding on 127.0.0.1:53."
+		}
 	}
 
 	if svcState == "running" && !localDNS {
@@ -82,12 +105,19 @@ func CurrentStatus() StatusInfo {
 	if localDNS && svcState != "running" && svcState != "unknown" {
 		info.Warnings = append(info.Warnings, "system DNS includes 127.0.0.1 but service is not running")
 	}
+	if svcState == "unknown" {
+		info.Warnings = append(info.Warnings, "service state could not be determined; readiness was inferred from DNS settings and probe results")
+	}
 
 	return info
 }
 
 func ShowStatus() {
 	showStatus(CurrentStatus())
+}
+
+func ShowStatusInfo(info StatusInfo) {
+	showStatus(info)
 }
 
 func showStatus(info StatusInfo) {
@@ -102,15 +132,32 @@ func showStatus(info StatusInfo) {
 	}
 
 	fmt.Printf("Service: %s\n", info.Service)
+	if info.ReadyCode != "" {
+		fmt.Printf("Readiness: %s\n", info.ReadyCode)
+	}
+	if info.ReadyDetail != "" {
+		fmt.Printf("Detail: %s\n", info.ReadyDetail)
+	}
+	if info.ProbeError != "" {
+		fmt.Printf("Probe error: %s\n", info.ProbeError)
+	}
 	for _, warning := range info.Warnings {
 		fmt.Printf("Warning: %s\n", warning)
 	}
 }
 
-func ShowStatusJSON() error {
-	enc := json.NewEncoder(os.Stdout)
+func writeStatusJSON(w io.Writer, info StatusInfo) error {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(CurrentStatus())
+	return enc.Encode(info)
+}
+
+func WriteStatusJSON(info StatusInfo) error {
+	return writeStatusJSON(os.Stdout, info)
+}
+
+func ShowStatusJSON() error {
+	return WriteStatusJSON(CurrentStatus())
 }
 
 func WaitUntilReady(timeout time.Duration) (StatusInfo, error) {
@@ -120,24 +167,27 @@ func WaitUntilReady(timeout time.Duration) (StatusInfo, error) {
 
 	deadline := nowFunc().Add(timeout)
 	var last StatusInfo
-	var lastProbeErr error
 	for {
 		last = currentStatusFunc()
 		if last.Ready {
-			if err := localDNSProbeFunc(); err == nil {
-				return last, nil
-			} else {
-				lastProbeErr = err
-			}
+			return last, nil
 		}
 		if nowFunc().After(deadline) {
-			if lastProbeErr != nil {
-				return last, fmt.Errorf("uBlockDNS did not become ready within %v: local DNS probe failed: %w", timeout, lastProbeErr)
-			}
-			return last, fmt.Errorf("uBlockDNS did not become ready within %v", timeout)
+			return last, waitReadyError(last, timeout)
 		}
 		sleepFunc(time.Second)
 	}
+}
+
+func waitReadyError(info StatusInfo, timeout time.Duration) error {
+	prefix := fmt.Sprintf("uBlockDNS did not become ready within %v", timeout)
+	if info.ReadyDetail == "" {
+		return fmt.Errorf("%s", prefix)
+	}
+	if info.ProbeError != "" {
+		return fmt.Errorf("%s: %s (%s)", prefix, info.ReadyDetail, info.ProbeError)
+	}
+	return fmt.Errorf("%s: %s", prefix, info.ReadyDetail)
 }
 
 func serviceState() (string, error) {

@@ -264,12 +264,34 @@ Write-Host "Waiting for uBlockDNS to become ready ..."
 $readyOutput = & $exePath wait-ready -timeout 45s -json 2>&1
 $readyExitCode = $LASTEXITCODE
 if ($readyExitCode -ne 0) {
-    $statusOutput = & $exePath status -json 2>&1
-    $statusSummary = (($statusOutput | ForEach-Object { "$_" }) -join "`n").Trim()
+    $statusSummary = (($readyOutput | ForEach-Object { "$_" }) -join "`n").Trim()
     if (-not $statusSummary) {
-        $statusSummary = "(no status output)"
+        $statusOutput = & $exePath status -json 2>&1
+        $statusSummary = (($statusOutput | ForEach-Object { "$_" }) -join "`n").Trim()
+        if (-not $statusSummary) {
+            $statusSummary = "(no status output)"
+        }
     }
-    throw "uBlockDNS did not report ready status. Last machine status: $statusSummary"
+
+    $statusHint = ""
+    try {
+        $readyStatus = $statusSummary | ConvertFrom-Json
+        $parts = @()
+        if ($readyStatus.ready_code) {
+            $parts += "reason=$($readyStatus.ready_code)"
+        }
+        if ($readyStatus.ready_detail) {
+            $parts += "$($readyStatus.ready_detail)"
+        }
+        if ($readyStatus.probe_error) {
+            $parts += "probe=$($readyStatus.probe_error)"
+        }
+        if ($parts.Count -gt 0) {
+            $statusHint = " " + ($parts -join " | ")
+        }
+    } catch {}
+
+    throw "uBlockDNS did not report ready status.$statusHint Last machine status: $statusSummary"
 }
 
 Write-Host "Done."

@@ -21,13 +21,15 @@
    - `install.ps1`
    - `setup.ps1`
 5. Smoke test installers:
-   - Unix: `curl -sSf https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.sh | sh -s -- <profile-id>`
-   - Windows (Admin PowerShell):
-     - `iwr https://raw.githubusercontent.com/ugzv/ublockdnsclient/main/install.ps1 -OutFile install.ps1`
-     - `powershell -ExecutionPolicy Bypass -File .\\install.ps1 -ProfileId <profile-id> -Version <tag>`
+   - Use the tagged release assets for the exact version being validated, not raw `main`.
+   - Unix: `curl -sSf https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.sh | sh -s -- <profile-id>`
+   - Windows 10+ (Admin PowerShell):
+     - `iwr https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.ps1 -OutFile install.ps1`
+     - `powershell -ExecutionPolicy Bypass -File .\\install.ps1 -ProfileId <profile-id> -Version vX.Y.Z`
 6. Validate runtime:
    - `ublockdns version`
    - `ublockdns status`
+   - `ublockdns status -json`
    - `ublockdns uninstall`
 
 ## Notes
