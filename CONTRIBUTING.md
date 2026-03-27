@@ -13,6 +13,7 @@ go build ./...
 - Run `go test ./...` locally.
 - Keep installers aligned with release artifact naming.
 - Do not commit local binaries or `dist/` artifacts.
+- Manually review security-sensitive code paths before opening the PR.
 
 ## Versioning
 

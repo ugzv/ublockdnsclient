@@ -1,5 +1,7 @@
 # uBlockDNS Client
 
+uBlockDNS Client is an independent project and is **not affiliated with, endorsed by, or related to uBlock Origin or its maintainer**.
+
 uBlockDNS Client brings DNS-level ad and tracker blocking to your entire device. It uses community-maintained filter lists such as EasyList and EasyPrivacy, applied at the DNS layer so apps, browsers, and background services are covered without per-browser extensions.
 
 **Website:** [ublockdns.com](https://ublockdns.com)
@@ -12,7 +14,7 @@ uBlockDNS Client is intended for desktop and server environments where you want 
 - Encrypted upstream DNS-over-HTTPS connection to the uBlockDNS service
 - Real-time filter and custom rule updates from your dashboard
 - Local service model with status checks and service management commands
-- Cross-platform support for macOS, Linux, Windows, and FreeBSD
+- Cross-platform support for macOS, Linux, Windows 10+, and FreeBSD
 
 ## Install
 
@@ -41,6 +43,8 @@ Windows 10 or later (PowerShell as Administrator):
 iwr https://ublockdns.com/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 ```
 
+Published Windows installers and binaries require Windows 10 or later. Windows 7, Windows 8, and Windows 8.1 are not supported.
+
 Verify installer script checksum (PowerShell):
 
 ```powershell
@@ -53,7 +57,6 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 ```
 
 A Windows GUI installer (.exe) is also available on the [releases page](https://github.com/ugzv/ublockdnsclient/releases).
-Windows 7, Windows 8, and Windows 8.1 are not supported by the published binaries.
 
 ### Other platforms
 
@@ -103,6 +106,8 @@ For blocking problems (ads getting through or a site wrongly blocked), check whi
 ## Security
 
 Report security vulnerabilities privately through [GitHub Security Advisories](https://github.com/ugzv/ublockdnsclient/security/advisories/new). Do not open public issues for security problems.
+
+For trust model details, development transparency, and current audit status, see [SECURITY.md](SECURITY.md).
 
 ## License
 
