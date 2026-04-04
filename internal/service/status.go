@@ -1,13 +1,9 @@
 package service
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"regexp"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/nextdns/nextdns/host"
@@ -125,54 +121,6 @@ func CurrentStatus() StatusInfo {
 	return info
 }
 
-func ShowStatus() {
-	showStatus(CurrentStatus())
-}
-
-func ShowStatusInfo(info StatusInfo) {
-	showStatus(info)
-}
-
-func showStatus(info StatusInfo) {
-	fmt.Printf("Status: %s\n", info.Status)
-
-	if len(info.SystemDNS) == 0 {
-		fmt.Println("System DNS: (none)")
-	} else if info.LocalDNS {
-		fmt.Printf("System DNS: %s (includes 127.0.0.1 via uBlockDNS)\n", strings.Join(info.SystemDNS, ", "))
-	} else {
-		fmt.Printf("System DNS: %s\n", strings.Join(info.SystemDNS, ", "))
-	}
-
-	fmt.Printf("Service: %s\n", info.Service)
-	if info.ReadyCode != "" {
-		fmt.Printf("Readiness: %s\n", info.ReadyCode)
-	}
-	if info.ReadyDetail != "" {
-		fmt.Printf("Detail: %s\n", info.ReadyDetail)
-	}
-	if info.ProbeError != "" {
-		fmt.Printf("Probe error: %s\n", info.ProbeError)
-	}
-	for _, warning := range info.Warnings {
-		fmt.Printf("Warning: %s\n", warning)
-	}
-}
-
-func writeStatusJSON(w io.Writer, info StatusInfo) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(info)
-}
-
-func WriteStatusJSON(info StatusInfo) error {
-	return writeStatusJSON(os.Stdout, info)
-}
-
-func ShowStatusJSON() error {
-	return WriteStatusJSON(CurrentStatus())
-}
-
 func WaitUntilReady(timeout time.Duration) (StatusInfo, error) {
 	if timeout <= 0 {
 		timeout = 45 * time.Second
@@ -251,62 +199,4 @@ func currentSystemDNS() []string {
 		}
 	}
 	return host.DNS()
-}
-
-func dnsFromScutil() ([]string, error) {
-	out, err := core.CommandOutput("scutil", "--dns")
-	if err != nil {
-		return nil, err
-	}
-	re := regexp.MustCompile(`nameserver\[[0-9]+\]\s*:\s*([^\s]+)`)
-	matches := re.FindAllStringSubmatch(string(out), -1)
-	if len(matches) == 0 {
-		return nil, nil
-	}
-	raw := make([]string, 0, len(matches))
-	for _, m := range matches {
-		if len(m) < 2 {
-			continue
-		}
-		raw = append(raw, m[1])
-	}
-	return core.CollectUniqueNonEmpty(raw), nil
-}
-
-func dnsFromWindowsPowerShell() ([]string, error) {
-	out, err := core.CommandOutput(
-		"powershell",
-		"-NoProfile",
-		"-NonInteractive",
-		"-Command",
-		`Get-DnsClientServerAddress -AddressFamily IPv4 | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ }`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return core.CollectUniqueNonEmpty(strings.Split(string(out), "\n")), nil
-}
-
-func windowsServiceState() (string, bool) {
-	out, err := core.CommandCombinedOutput("sc.exe", "query", core.ServiceName)
-	text := string(out)
-	if err != nil {
-		if strings.Contains(text, "FAILED 1060") {
-			return "not-installed", true
-		}
-		return "unknown", false
-	}
-
-	m := regexp.MustCompile(`STATE\s*:\s*(\d+)`).FindStringSubmatch(text)
-	if len(m) < 2 {
-		return "unknown", false
-	}
-	switch m[1] {
-	case "1":
-		return "stopped", true
-	case "4":
-		return "running", true
-	default:
-		return "unknown", true
-	}
 }
