@@ -38,11 +38,14 @@ var (
 	localDNSProbeFunc = func() error {
 		return core.CheckLocalDNSProxy(readinessProbeHost)
 	}
-	serviceStateFunc = serviceState
-	systemDNSFunc    = currentSystemDNS
-	loadInstallState = state.LoadInstallState
-	nowFunc          = time.Now
-	sleepFunc        = time.Sleep
+	serviceStateFunc  = serviceState
+	systemDNSFunc     = currentSystemDNS
+	loadInstallState  = state.LoadInstallState
+	nowFunc           = time.Now
+	sleepFunc         = time.Sleep
+	hostDNSFunc       = host.DNS
+	commandOutputFunc = core.CommandOutput
+	readFileFunc      = os.ReadFile
 )
 
 func serviceCurrentlyInstalled() bool {
@@ -56,6 +59,15 @@ func serviceCurrentlyInstalled() bool {
 func CurrentStatus() StatusInfo {
 	dns := systemDNSFunc()
 	localDNS := core.HasDNS127001(dns)
+	var warnings []string
+	if runtime.GOOS == "linux" {
+		assessment := assessLinuxResolverDNS()
+		if len(assessment.DNS) > 0 {
+			dns = assessment.DNS
+			localDNS = assessment.LocalDNS
+		}
+		warnings = append(warnings, assessment.Warnings...)
+	}
 
 	svcState := "unknown"
 	if st, err := serviceStateFunc(); err == nil {
@@ -74,6 +86,7 @@ func CurrentStatus() StatusInfo {
 		info.DoHServer = st.DoHServer
 		info.APIServer = st.APIServer
 	}
+	info.Warnings = append(info.Warnings, warnings...)
 
 	switch {
 	case svcState == "not-installed":

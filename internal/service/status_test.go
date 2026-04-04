@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -150,5 +151,118 @@ func TestWaitUntilReadySucceedsAfterProbePasses(t *testing.T) {
 	}
 	if statusCalls != 2 {
 		t.Fatalf("expected 2 readiness checks, got %d", statusCalls)
+	}
+}
+
+func TestAssessLinuxResolverDNSPrefersAuthoritativeLocalDNS(t *testing.T) {
+	oldHostDNS := hostDNSFunc
+	oldCommandOutput := commandOutputFunc
+	oldReadFile := readFileFunc
+	t.Cleanup(func() {
+		hostDNSFunc = oldHostDNS
+		commandOutputFunc = oldCommandOutput
+		readFileFunc = oldReadFile
+	})
+
+	hostDNSFunc = func() []string { return []string{"8.8.8.8", "8.8.4.4"} }
+	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
+		if name == "resolvectl" && len(args) == 1 && args[0] == "dns" {
+			return []byte("Global: 127.0.0.1\nLink 2 (wlan0): 192.168.2.1\n"), nil
+		}
+		return nil, errors.New("unexpected command")
+	}
+	readFileFunc = func(name string) ([]byte, error) {
+		if name == "/etc/resolv.conf" {
+			return []byte("nameserver 127.0.0.1\n"), nil
+		}
+		return nil, errors.New("unexpected file")
+	}
+
+	assessment := assessLinuxResolverDNS()
+	if !assessment.LocalDNS {
+		t.Fatalf("expected local DNS assessment, got %+v", assessment)
+	}
+	if !sameDNSSet(assessment.DNS, []string{"127.0.0.1", "192.168.2.1"}) {
+		t.Fatalf("expected resolvectl DNS to win, got %+v", assessment)
+	}
+	if len(assessment.Warnings) == 0 {
+		t.Fatalf("expected disagreement warning, got %+v", assessment)
+	}
+	if !strings.Contains(assessment.Warnings[0], "upstream DNS") {
+		t.Fatalf("expected upstream metadata warning, got %+v", assessment)
+	}
+}
+
+func TestAssessLinuxResolverDNSFallsBackToResolvConf(t *testing.T) {
+	oldHostDNS := hostDNSFunc
+	oldCommandOutput := commandOutputFunc
+	oldReadFile := readFileFunc
+	t.Cleanup(func() {
+		hostDNSFunc = oldHostDNS
+		commandOutputFunc = oldCommandOutput
+		readFileFunc = oldReadFile
+	})
+
+	hostDNSFunc = func() []string { return []string{"8.8.8.8"} }
+	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
+		return nil, errors.New("resolvectl unavailable")
+	}
+	readFileFunc = func(name string) ([]byte, error) {
+		return []byte("# managed\nnameserver 127.0.0.1\n"), nil
+	}
+
+	assessment := assessLinuxResolverDNS()
+	if !assessment.LocalDNS {
+		t.Fatalf("expected resolv.conf local DNS assessment, got %+v", assessment)
+	}
+	if !sameDNSSet(assessment.DNS, []string{"127.0.0.1"}) {
+		t.Fatalf("expected resolv.conf DNS, got %+v", assessment)
+	}
+}
+
+func TestCurrentStatusUsesLinuxResolverAssessment(t *testing.T) {
+	oldServiceState := serviceStateFunc
+	oldSystemDNS := systemDNSFunc
+	oldProbe := localDNSProbeFunc
+	oldLoadInstallState := loadInstallState
+	oldHostDNS := hostDNSFunc
+	oldCommandOutput := commandOutputFunc
+	oldReadFile := readFileFunc
+	t.Cleanup(func() {
+		serviceStateFunc = oldServiceState
+		systemDNSFunc = oldSystemDNS
+		localDNSProbeFunc = oldProbe
+		loadInstallState = oldLoadInstallState
+		hostDNSFunc = oldHostDNS
+		commandOutputFunc = oldCommandOutput
+		readFileFunc = oldReadFile
+	})
+
+	serviceStateFunc = func() (string, error) { return "running", nil }
+	systemDNSFunc = func() []string { return []string{"8.8.8.8", "8.8.4.4"} }
+	localDNSProbeFunc = func() error { return nil }
+	loadInstallState = func() (state.InstallState, error) { return state.InstallState{}, errors.New("missing") }
+	hostDNSFunc = func() []string { return []string{"8.8.8.8", "8.8.4.4"} }
+	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
+		if name == "resolvectl" {
+			return []byte("Global: 127.0.0.1\n"), nil
+		}
+		return nil, errors.New("unexpected command")
+	}
+	readFileFunc = func(name string) ([]byte, error) {
+		return []byte("nameserver 127.0.0.1\n"), nil
+	}
+
+	info := CurrentStatus()
+	if runtime.GOOS == "linux" {
+		if !info.Ready || info.Status != "active" {
+			t.Fatalf("expected linux assessment to mark active, got %+v", info)
+		}
+		if !info.LocalDNS {
+			t.Fatalf("expected local DNS true, got %+v", info)
+		}
+		if !sameDNSSet(info.SystemDNS, []string{"127.0.0.1"}) {
+			t.Fatalf("expected authoritative local DNS, got %+v", info)
+		}
 	}
 }

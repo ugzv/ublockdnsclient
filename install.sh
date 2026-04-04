@@ -12,7 +12,6 @@ BINARY="ublockdns"
 INSTALL_DIR="/usr/local/bin"
 TMP_BIN=""
 TMP_SUMS=""
-READY_STATUS_JSON=""
 
 # ── Terminal colors ──────────────────────────────────────────
 
@@ -82,13 +81,64 @@ verify_sha256() {
     [ "$actual" = "$expected" ]
 }
 
-wait_for_ready() {
-    READY_STATUS_JSON=""
-    info "Waiting for uBlockDNS to become ready..."
-    if READY_STATUS_JSON=$(run_as_root "${INSTALL_DIR}/${BINARY}" wait-ready -timeout 45s -json 2>/dev/null); then
-        success "uBlockDNS is ready."
+# ── DNS validation ──────────────────────────────────────────
+
+# Run a command silently, suppressing even shell-level crash messages
+quiet_run() { ("$@" >/dev/null 2>&1) 2>/dev/null; }
+
+validate_dns() {
+    found_tool=0
+
+    # Try tools that can query 127.0.0.1 directly
+    if has dig; then
+        found_tool=1
+        quiet_run dig @127.0.0.1 example.com +short +time=2 +tries=1 && return 0
+    fi
+    if has nslookup; then
+        found_tool=1
+        quiet_run nslookup -timeout=2 example.com 127.0.0.1 && return 0
+    fi
+    if has host; then
+        found_tool=1
+        quiet_run host -W 2 example.com 127.0.0.1 && return 0
+    fi
+    if has drill; then
+        found_tool=1
+        quiet_run drill @127.0.0.1 example.com && return 0
+    fi
+
+    # Fallback: use system resolver after install has pointed it at 127.0.0.1
+    if has getent; then
+        found_tool=1
+        quiet_run getent hosts example.com && return 0
+    fi
+
+    # macOS
+    if has dscacheutil; then
+        found_tool=1
+        quiet_run dscacheutil -q host -a name example.com && return 0
+    fi
+
+    # No DNS tools installed at all — can't validate, assume ok
+    if [ "$found_tool" -eq 0 ]; then
+        warn "No DNS lookup tools found — skipping validation."
         return 0
     fi
+
+    return 1
+}
+
+wait_for_dns() {
+    info "Waiting for DNS proxy to become ready..."
+    i=1
+    while [ "$i" -le 15 ]; do
+        if validate_dns; then
+            success "DNS proxy is responding."
+            return 0
+        fi
+        sleep 1
+        i=$((i + 1))
+    done
     return 1
 }
 
@@ -366,14 +416,10 @@ main() {
 
     # ── Verify DNS is working ────────────────────────────────
 
-    if ! wait_for_ready; then
-        warn "uBlockDNS did not report ready status."
+    if ! wait_for_dns; then
+        warn "uBlockDNS did not validate local DNS resolution."
         warn "Current machine status:"
-        if [ -n "$READY_STATUS_JSON" ]; then
-            printf '%s\n' "$READY_STATUS_JSON"
-        else
-            run_as_root "${INSTALL_DIR}/${BINARY}" status -json || true
-        fi
+        run_as_root "${INSTALL_DIR}/${BINARY}" status -json || true
         printf "  Check:     ${BOLD}ublockdns status${RESET}\n"
         printf "  Uninstall: ${BOLD}sudo ublockdns uninstall${RESET}\n"
         printf "\n"
