@@ -15,17 +15,30 @@ func TestCurrentStatusIncludesProbeFailureDetails(t *testing.T) {
 	oldSystemDNS := systemDNSFunc
 	oldProbe := localDNSProbeFunc
 	oldLoadInstallState := loadInstallState
+	oldHostDNS := hostDNSFunc
+	oldCommandOutput := commandOutputFunc
+	oldReadFile := readFileFunc
 	t.Cleanup(func() {
 		serviceStateFunc = oldServiceState
 		systemDNSFunc = oldSystemDNS
 		localDNSProbeFunc = oldProbe
 		loadInstallState = oldLoadInstallState
+		hostDNSFunc = oldHostDNS
+		commandOutputFunc = oldCommandOutput
+		readFileFunc = oldReadFile
 	})
 
 	serviceStateFunc = func() (string, error) { return "running", nil }
 	systemDNSFunc = func() []string { return []string{"127.0.0.1"} }
 	localDNSProbeFunc = func() error { return errors.New("udp timeout") }
 	loadInstallState = func() (state.InstallState, error) { return state.InstallState{}, errors.New("missing") }
+	hostDNSFunc = func() []string { return []string{"127.0.0.1"} }
+	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
+		return []byte("Global: 127.0.0.1\n"), nil
+	}
+	readFileFunc = func(name string) ([]byte, error) {
+		return []byte("nameserver 127.0.0.1\n"), nil
+	}
 
 	info := CurrentStatus()
 	if info.Ready {
@@ -47,17 +60,30 @@ func TestCurrentStatusMarksReadyAfterSuccessfulProbe(t *testing.T) {
 	oldSystemDNS := systemDNSFunc
 	oldProbe := localDNSProbeFunc
 	oldLoadInstallState := loadInstallState
+	oldHostDNS := hostDNSFunc
+	oldCommandOutput := commandOutputFunc
+	oldReadFile := readFileFunc
 	t.Cleanup(func() {
 		serviceStateFunc = oldServiceState
 		systemDNSFunc = oldSystemDNS
 		localDNSProbeFunc = oldProbe
 		loadInstallState = oldLoadInstallState
+		hostDNSFunc = oldHostDNS
+		commandOutputFunc = oldCommandOutput
+		readFileFunc = oldReadFile
 	})
 
 	serviceStateFunc = func() (string, error) { return "running", nil }
 	systemDNSFunc = func() []string { return []string{"127.0.0.1"} }
 	localDNSProbeFunc = func() error { return nil }
 	loadInstallState = func() (state.InstallState, error) { return state.InstallState{}, errors.New("missing") }
+	hostDNSFunc = func() []string { return []string{"127.0.0.1"} }
+	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
+		return []byte("Global: 127.0.0.1\n"), nil
+	}
+	readFileFunc = func(name string) ([]byte, error) {
+		return []byte("nameserver 127.0.0.1\n"), nil
+	}
 
 	info := CurrentStatus()
 	if !info.Ready {
