@@ -10,32 +10,40 @@ import (
 )
 
 var (
-	activateSystemDNSFunc         = core.ActivateSystemDNS
-	deactivateSystemDNSFunc       = core.DeactivateSystemDNSBestEffort
-	deactivateSystemDNSStrictFunc = core.DeactivateSystemDNS
+	activatePlatformSystemDNSFunc    = core.ActivatePlatformSystemDNS
+	restoreSystemDNSStrictFunc       = core.RestoreSystemDNSStrict
+	restoreSystemDNSBestEffortFunc   = core.RestoreSystemDNSBestEffort
+	restoreSystemDNSWithWarningsFunc = core.RestoreSystemDNSWithWarnings
 )
 
+// UninstallResult summarizes service removal and DNS restoration.
+type UninstallResult struct {
+	Warnings []string
+}
+
 // Uninstall removes the system service and restores DNS.
-func Uninstall() error {
+func Uninstall() (UninstallResult, error) {
+	result := UninstallResult{}
+
 	svc, err := baseService()
 	if err != nil {
-		return err
+		return result, err
 	}
 
-	_ = stopServiceAndRestoreDNS(svc)
+	_ = stopService(svc)
+	result.Warnings = append(result.Warnings, restoreSystemDNSWithWarningsFunc()...)
 
 	if err := svc.Uninstall(); err != nil {
-		return fmt.Errorf("uninstall service: %w", err)
+		return result, fmt.Errorf("uninstall service: %w", err)
 	}
 	_ = state.ClearPersistedTokens()
-	_ = state.ClearInstallState()
 
-	return nil
+	removeServiceConfigBestEffort()
+
+	return result, nil
 }
 
 // ServiceStart starts the service when needed and strictly re-applies system DNS.
-// Start is best-effort because launchd/systemd may report "already running" while
-// DNS still needs repair after an OS update or network reset.
 func ServiceStart() error {
 	svc, err := baseService()
 	if err != nil {
@@ -50,7 +58,7 @@ func ServiceStart() error {
 	if st != service.StatusRunning {
 		return fmt.Errorf("service is not running")
 	}
-	if err := activateSystemDNSFunc(); err != nil {
+	if err := activatePlatformSystemDNSFunc(); err != nil {
 		return fmt.Errorf("activate system DNS: %w", err)
 	}
 	return nil
@@ -64,12 +72,9 @@ func ServiceStop() error {
 	return stopServiceAndRestoreDNS(svc)
 }
 
-// stopServiceAndRestoreDNS stops the service and always resets system DNS.
-// Legacy daemons do not deactivate on stop; the CLI must restore DNS even when
-// manageSystemDNS is absent or stop fails partway through.
 func stopServiceAndRestoreDNS(svc service.Service) error {
 	err := stopService(svc)
-	deactivateSystemDNSFunc()
+	restoreSystemDNSBestEffortFunc()
 	return err
 }
 

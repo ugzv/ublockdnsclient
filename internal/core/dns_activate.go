@@ -1,6 +1,8 @@
 package core
 
 import (
+	"errors"
+	"fmt"
 	"log"
 
 	"github.com/nextdns/nextdns/host"
@@ -13,28 +15,71 @@ var (
 	resetSystemDNSFunc = host.ResetDNS
 )
 
-// ActivateSystemDNS points the host resolver at the local uBlockDNS proxy.
+// ActivateSystemDNS points the host resolver at the local uBlockDNS proxy via nextdns.
+// Non-Linux platforms use this through ActivatePlatformSystemDNS.
 func ActivateSystemDNS() error {
 	return setSystemDNSFunc(LocalDNSAddress)
 }
 
-// ActivateSystemDNSBestEffort logs and continues when activation fails.
-func ActivateSystemDNSBestEffort() {
-	if err := ActivateSystemDNS(); err != nil {
+// ActivatePlatformSystemDNS applies the platform-specific system DNS install path.
+// Linux uses the durable uBlockDNS layer only; other platforms use nextdns SetDNS.
+func ActivatePlatformSystemDNS() error {
+	return activatePlatformSystemDNS()
+}
+
+// ActivatePlatformSystemDNSBestEffort logs and continues when activation fails.
+func ActivatePlatformSystemDNSBestEffort() {
+	if err := ActivatePlatformSystemDNS(); err != nil {
 		log.Printf("Warning: failed to activate system DNS: %v", err)
 	}
 }
 
-// DeactivateSystemDNS restores the host resolver to its default configuration.
-func DeactivateSystemDNS() error {
-	return resetSystemDNSFunc()
+// RestoreSystemDNS restores DNS for durable, legacy nextdns-only, and mixed installs.
+func RestoreSystemDNS(strict bool) ([]string, error) {
+	return restoreSystemDNS(strict)
 }
 
-// DeactivateSystemDNSBestEffort logs and continues when deactivation fails.
-func DeactivateSystemDNSBestEffort() {
-	if err := DeactivateSystemDNS(); err != nil {
-		log.Printf("Warning: failed to deactivate system DNS: %v", err)
+// RestoreSystemDNSStrict fails when any restore step fails.
+func RestoreSystemDNSStrict() error {
+	_, err := RestoreSystemDNS(true)
+	return err
+}
+
+// RestoreSystemDNSBestEffort logs and continues when restore fails.
+func RestoreSystemDNSBestEffort() {
+	_, _ = RestoreSystemDNS(false)
+}
+
+// RestoreSystemDNSWithWarnings restores DNS best-effort and returns human-readable issues.
+func RestoreSystemDNSWithWarnings() []string {
+	warnings, _ := RestoreSystemDNS(false)
+	return warnings
+}
+
+func restoreSystemDNS(strict bool) ([]string, error) {
+	var warnings []string
+	var errs []error
+
+	record := func(step string, err error) {
+		if err == nil {
+			return
+		}
+		if strict {
+			errs = append(errs, fmt.Errorf("%s: %w", step, err))
+			return
+		}
+		warnings = append(warnings, step+": "+err.Error())
+		log.Printf("Warning: failed to %s: %v", step, err)
 	}
+
+	record("restore install artifacts", restorePlatformInstallArtifacts())
+	record("deactivate legacy system DNS", resetSystemDNSFunc())
+
+	if err := FlushDNSCaches(); err != nil {
+		record("flush DNS caches", err)
+	}
+
+	return warnings, errors.Join(errs...)
 }
 
 // SwapSystemDNSFuncs overrides DNS set/reset hooks and returns a restore func.

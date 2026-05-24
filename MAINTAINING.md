@@ -33,13 +33,17 @@
    - `ublockdns status`
    - `ublockdns status -json`
    - `ublockdns uninstall`
+7. On Linux, validate DNS install/uninstall round-trip:
+   - After install: `/etc/resolv.conf` contains `127.0.0.1`; optional drop-ins exist under `/etc/NetworkManager/conf.d/ublockdns.conf` or `/etc/systemd/resolved.conf.d/ublockdns.conf` depending on the host
+   - After uninstall: `ublockdns status` shows service not installed; `/etc/resolv.conf` no longer contains `Managed by uBlockDNS`; `chattr +i` is not set on `/etc/resolv.conf`
+   - Note: uninstall restores DNS before removing the service registration. If service removal fails, check warnings printed by the CLI and rerun `sudo ublockdns uninstall`.
 
 ## Notes
 
 - Hosted install URLs (`https://ublockdns.com/...`) are served by the backend from embedded copies of `install.sh` and `install.ps1` in `ublockdns/internal/api/`. Sync those files from this repo when installer behavior changes.
 - Cloudflare sits in front of `ublockdns.com`. Use `curl -sSfL` for Unix pipe installs so redirects are followed. On Windows, prefer the dashboard bootstrap (`/install?id=...`) or download from `/install-script` instead of `/install.ps1` directly.
 - Internal package layout:
-  - `internal/core`: shared helpers, validation, config constants, DNS probe/cache utilities
+  - `internal/core`: shared helpers, validation, config constants, DNS probe/cache utilities; Linux durable DNS lives in `linux_dns_*.go`
   - `internal/runtime`: proxy startup, upstream endpoint handling, rules stream/watcher logic
   - `internal/service`: install/uninstall, service control, status/readiness, privilege checks
   - `internal/state`: persisted token and install-state storage

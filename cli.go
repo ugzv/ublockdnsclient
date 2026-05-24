@@ -96,12 +96,28 @@ func main() {
 		}
 		fmt.Printf("All DNS queries now route through your profile: %s\n", args.profileID)
 
+	case "configure-system-dns":
+		fmt.Println("Configuring durable Linux system DNS...")
+		if err := core.ConfigureLinuxSystemDNS(); err != nil {
+			log.Fatalf("configure-system-dns failed: %v", err)
+		}
+		fmt.Println("Linux system DNS configured.")
+
 	case "uninstall":
 		fmt.Println("Uninstalling uBlockDNS service...")
-		if err := service.Uninstall(); err != nil {
+		result, err := service.Uninstall()
+		if err != nil {
 			log.Fatalf("Uninstall failed: %v", err)
 		}
-		fmt.Println("uBlockDNS uninstalled. DNS restored to defaults.")
+		for _, warning := range result.Warnings {
+			fmt.Printf("Warning: %s\n", warning)
+		}
+		if len(result.Warnings) == 0 {
+			fmt.Println("uBlockDNS service removed and system DNS restored.")
+		} else {
+			fmt.Println("uBlockDNS service removed. DNS may need manual cleanup — see warnings above.")
+		}
+		fmt.Println("The client binary was kept on disk. Remove it manually if you no longer need it.")
 
 	case "start":
 		fmt.Println("Starting uBlockDNS service...")

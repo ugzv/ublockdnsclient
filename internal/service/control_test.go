@@ -30,7 +30,7 @@ func (f fakeService) Status() (service.Status, error)                 { return f
 func TestServiceStartActivatesDNSWhenRunning(t *testing.T) {
 	var activated atomic.Bool
 	withControlTestEnv(t, controlTestEnv{
-		activateSystemDNS: func() error {
+		activatePlatformSystemDNS: func() error {
 			activated.Store(true)
 			return nil
 		},
@@ -49,7 +49,7 @@ func TestServiceStartActivatesDNSWhenRunning(t *testing.T) {
 
 func TestServiceStartReturnsErrorWhenNotRunning(t *testing.T) {
 	withControlTestEnv(t, controlTestEnv{
-		activateSystemDNS: func() error {
+		activatePlatformSystemDNS: func() error {
 			t.Fatal("DNS activation should not run when service is not running")
 			return nil
 		},
@@ -70,7 +70,7 @@ func TestServiceStartReturnsErrorWhenNotRunning(t *testing.T) {
 func TestServiceStartReturnsActivationError(t *testing.T) {
 	want := errors.New("activate failed")
 	withControlTestEnv(t, controlTestEnv{
-		activateSystemDNS: func() error { return want },
+		activatePlatformSystemDNS: func() error { return want },
 		baseService: func() (service.Service, error) {
 			return fakeService{status: service.StatusRunning}, nil
 		},
@@ -85,7 +85,7 @@ func TestServiceStartReturnsActivationError(t *testing.T) {
 func TestServiceStartRepairsDNSWhenAlreadyRunning(t *testing.T) {
 	var activated atomic.Bool
 	withControlTestEnv(t, controlTestEnv{
-		activateSystemDNS: func() error {
+		activatePlatformSystemDNS: func() error {
 			activated.Store(true)
 			return nil
 		},
@@ -106,29 +106,30 @@ func TestServiceStartRepairsDNSWhenAlreadyRunning(t *testing.T) {
 }
 
 func TestUninstallDeactivatesDNSWhenStopFails(t *testing.T) {
-	var deactivated atomic.Bool
+	var restored atomic.Bool
 	withControlTestEnv(t, controlTestEnv{
-		deactivateSystemDNS: func() {
-			deactivated.Store(true)
+		restoreSystemDNSWithWarnings: func() []string {
+			restored.Store(true)
+			return nil
 		},
 		baseService: func() (service.Service, error) {
 			return fakeService{stopErr: errors.New("stop failed")}, nil
 		},
 	})
 
-	if err := Uninstall(); err != nil {
+	if _, err := Uninstall(); err != nil {
 		t.Fatalf("Uninstall() error = %v", err)
 	}
-	if !deactivated.Load() {
-		t.Fatal("expected DNS deactivation fallback when stop fails")
+	if !restored.Load() {
+		t.Fatal("expected DNS restore fallback when stop fails")
 	}
 }
 
 func TestServiceStopDeactivatesDNSWhenStopFails(t *testing.T) {
-	var deactivated atomic.Bool
+	var restored atomic.Bool
 	withControlTestEnv(t, controlTestEnv{
-		deactivateSystemDNS: func() {
-			deactivated.Store(true)
+		restoreSystemDNSBestEffort: func() {
+			restored.Store(true)
 		},
 		baseService: func() (service.Service, error) {
 			return fakeService{stopErr: errors.New("stop failed")}, nil
@@ -139,16 +140,16 @@ func TestServiceStopDeactivatesDNSWhenStopFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("ServiceStop() expected stop error")
 	}
-	if !deactivated.Load() {
-		t.Fatal("expected DNS deactivation when stop fails")
+	if !restored.Load() {
+		t.Fatal("expected DNS restore when stop fails")
 	}
 }
 
 func TestServiceStopDeactivatesDNSWhenStopSucceeds(t *testing.T) {
-	var deactivated atomic.Bool
+	var restored atomic.Bool
 	withControlTestEnv(t, controlTestEnv{
-		deactivateSystemDNS: func() {
-			deactivated.Store(true)
+		restoreSystemDNSBestEffort: func() {
+			restored.Store(true)
 		},
 		baseService: func() (service.Service, error) {
 			return fakeService{}, nil
@@ -158,26 +159,27 @@ func TestServiceStopDeactivatesDNSWhenStopSucceeds(t *testing.T) {
 	if err := ServiceStop(); err != nil {
 		t.Fatalf("ServiceStop() error = %v", err)
 	}
-	if !deactivated.Load() {
-		t.Fatal("expected DNS deactivation after stop even when stop succeeds")
+	if !restored.Load() {
+		t.Fatal("expected DNS restore after stop even when stop succeeds")
 	}
 }
 
 func TestUninstallDeactivatesDNSWhenStopSucceeds(t *testing.T) {
-	var deactivated atomic.Bool
+	var restored atomic.Bool
 	withControlTestEnv(t, controlTestEnv{
-		deactivateSystemDNS: func() {
-			deactivated.Store(true)
+		restoreSystemDNSWithWarnings: func() []string {
+			restored.Store(true)
+			return nil
 		},
 		baseService: func() (service.Service, error) {
 			return fakeService{}, nil
 		},
 	})
 
-	if err := Uninstall(); err != nil {
+	if _, err := Uninstall(); err != nil {
 		t.Fatalf("Uninstall() error = %v", err)
 	}
-	if !deactivated.Load() {
-		t.Fatal("expected DNS deactivation after uninstall even when stop succeeds")
+	if !restored.Load() {
+		t.Fatal("expected DNS restore after uninstall even when stop succeeds")
 	}
 }

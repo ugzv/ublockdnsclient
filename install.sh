@@ -132,134 +132,6 @@ wait_for_dns() {
     return 1
 }
 
-# ── Write /etc/resolv.conf safely ───────────────────────────
-
-write_resolv_conf() {
-    # Remove immutable flag if set (from a previous install)
-    if has chattr; then
-        run_as_root chattr -i /etc/resolv.conf 2>/dev/null || true
-    fi
-
-    # Remove symlink if present (common with systemd-resolved stub)
-    if [ -L /etc/resolv.conf ]; then
-        run_as_root rm -f /etc/resolv.conf
-    fi
-
-    run_as_root tee /etc/resolv.conf >/dev/null <<EOF
-# Managed by uBlockDNS — do not edit
-nameserver 127.0.0.1
-EOF
-
-    # Prevent other services from overwriting resolv.conf
-    if has chattr; then
-        run_as_root chattr +i /etc/resolv.conf 2>/dev/null || true
-    fi
-}
-
-# ── Linux DNS configuration (all distros) ───────────────────
-
-configure_linux_dns() {
-    # Backup original resolv.conf (first install only)
-    if [ -f /etc/resolv.conf ] && [ ! -f /etc/resolv.conf.ublockdns.bak ]; then
-        info "Backing up /etc/resolv.conf"
-        if [ -L /etc/resolv.conf ]; then
-            run_as_root cp -P /etc/resolv.conf /etc/resolv.conf.ublockdns.bak
-        else
-            run_as_root cp /etc/resolv.conf /etc/resolv.conf.ublockdns.bak
-        fi
-    fi
-
-    dns_manager="none"
-
-    # Detect what manages DNS on this system
-    if systemctl is-active --quiet systemd-resolved 2>/dev/null; then
-        dns_manager="systemd-resolved"
-    elif systemctl is-active --quiet NetworkManager 2>/dev/null; then
-        dns_manager="networkmanager"
-    elif systemctl is-active --quiet connman 2>/dev/null; then
-        dns_manager="connman"
-    elif [ -d /etc/dhclient.d ] || [ -f /etc/dhcp/dhclient.conf ] || [ -f /etc/dhclient.conf ]; then
-        dns_manager="dhclient"
-    elif has resolvconf; then
-        dns_manager="resolvconf"
-    fi
-
-    info "Detected DNS manager: ${dns_manager}"
-
-    case "$dns_manager" in
-
-        systemd-resolved)
-            run_as_root mkdir -p /etc/systemd/resolved.conf.d
-            run_as_root tee /etc/systemd/resolved.conf.d/ublockdns.conf >/dev/null <<EOF
-[Resolve]
-DNS=127.0.0.1
-DNSStubListener=no
-EOF
-            run_as_root systemctl restart systemd-resolved
-            write_resolv_conf
-            success "Configured systemd-resolved."
-            ;;
-
-        networkmanager)
-            # Tell NetworkManager to stop managing /etc/resolv.conf
-            run_as_root mkdir -p /etc/NetworkManager/conf.d
-            run_as_root tee /etc/NetworkManager/conf.d/ublockdns.conf >/dev/null <<EOF
-[main]
-dns=none
-EOF
-            # Write resolv.conf BEFORE restarting NM — dns=none means NM won't touch it
-            write_resolv_conf
-            run_as_root systemctl restart NetworkManager 2>/dev/null || true
-            success "Configured NetworkManager."
-            ;;
-
-        connman)
-            run_as_root mkdir -p /etc/connman
-            if [ -f /etc/connman/main.conf ]; then
-                if grep -q '^\[General\]' /etc/connman/main.conf 2>/dev/null; then
-                    if ! grep -q 'DNSProxy' /etc/connman/main.conf 2>/dev/null; then
-                        run_as_root sed -i '/^\[General\]/a DNSProxy=none' /etc/connman/main.conf
-                    fi
-                else
-                    printf '[General]\nDNSProxy=none\n' | run_as_root tee -a /etc/connman/main.conf >/dev/null
-                fi
-            else
-                printf '[General]\nDNSProxy=none\n' | run_as_root tee /etc/connman/main.conf >/dev/null
-            fi
-            write_resolv_conf
-            run_as_root systemctl restart connman 2>/dev/null || true
-            success "Configured ConnMan."
-            ;;
-
-        dhclient)
-            dhclient_conf=""
-            for f in /etc/dhcp/dhclient.conf /etc/dhclient.conf; do
-                [ -f "$f" ] && dhclient_conf="$f" && break
-            done
-            if [ -n "$dhclient_conf" ]; then
-                if ! grep -q 'supersede domain-name-servers 127.0.0.1' "$dhclient_conf" 2>/dev/null; then
-                    printf '\n# uBlockDNS\nsupersede domain-name-servers 127.0.0.1;\n' | run_as_root tee -a "$dhclient_conf" >/dev/null
-                fi
-            fi
-            write_resolv_conf
-            success "Configured dhclient."
-            ;;
-
-        resolvconf)
-            run_as_root mkdir -p /etc/resolvconf/resolv.conf.d
-            printf 'nameserver 127.0.0.1\n' | run_as_root tee /etc/resolvconf/resolv.conf.d/head >/dev/null
-            run_as_root resolvconf -u 2>/dev/null || true
-            write_resolv_conf
-            success "Configured resolvconf."
-            ;;
-
-        none)
-            write_resolv_conf
-            success "Configured /etc/resolv.conf directly."
-            ;;
-    esac
-}
-
 # ── Main ─────────────────────────────────────────────────────
 
 main() {
@@ -374,11 +246,6 @@ main() {
         run_as_root "${INSTALL_DIR}/${BINARY}" stop 2>/dev/null || true
     fi
 
-    # Unlock resolv.conf so the binary can write to it during install
-    if has chattr; then
-        run_as_root chattr -i /etc/resolv.conf 2>/dev/null || true
-    fi
-
     # ── Install binary ───────────────────────────────────────
 
     info "Installing to ${INSTALL_DIR}/${BINARY}..."
@@ -396,12 +263,6 @@ main() {
         error "Service installation failed."
         [ -n "$EXISTING" ] && warn "Tip: run 'sudo ublockdns uninstall' first, then retry."
         exit 1
-    fi
-
-    # ── Configure system DNS ─────────────────────────────────
-
-    if [ "$OS" = "linux" ]; then
-        configure_linux_dns
     fi
 
     # ── Verify DNS is working ────────────────────────────────

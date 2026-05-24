@@ -61,3 +61,6 @@ Name: "{autoprograms}\\uBlockDNS\\Uninstall uBlockDNS"; Filename: "{uninstallexe
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\\setup.ps1"" -Version ""{#MyAppVersion}"""; Description: "Run guided setup now (recommended)"; Flags: postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{app}\\{#MyAppExeName}"; Parameters: "uninstall"; Flags: runhidden waituntilterminated

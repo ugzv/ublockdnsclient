@@ -34,11 +34,20 @@ func TestActivateSystemDNSPropagatesError(t *testing.T) {
 	}
 }
 
-func TestDeactivateSystemDNSPropagatesError(t *testing.T) {
+func TestRestoreSystemDNSStrictPropagatesError(t *testing.T) {
 	want := errors.New("reset dns failed")
 	installTestDNSHooks(t, nil, func() error { return want })
 
-	if err := DeactivateSystemDNS(); !errors.Is(err, want) {
-		t.Fatalf("DeactivateSystemDNS() error = %v, want %v", err, want)
+	if err := RestoreSystemDNSStrict(); !errors.Is(err, want) {
+		t.Fatalf("RestoreSystemDNSStrict() error = %v, want %v", err, want)
+	}
+}
+
+func TestRestoreSystemDNSWithWarningsReturnsLegacyFailure(t *testing.T) {
+	installTestDNSHooks(t, nil, func() error { return errors.New("reset dns failed") })
+
+	warnings := RestoreSystemDNSWithWarnings()
+	if len(warnings) == 0 {
+		t.Fatal("expected restore warnings")
 	}
 }

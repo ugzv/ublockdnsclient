@@ -19,7 +19,7 @@ func defaultWatchNetworkDNSChanges(ctx context.Context) {
 			return
 		case reason := <-changes:
 			log.Printf("Network change detected: %s; re-activating system DNS", reason)
-			core.ActivateSystemDNSBestEffort()
+			core.ActivatePlatformSystemDNSBestEffort()
 		}
 	}
 }
@@ -28,10 +28,10 @@ func defaultWatchNetworkDNSChanges(ctx context.Context) {
 // network changes and restoring defaults when the proxy stops.
 func manageSystemDNS(ctx context.Context) {
 	log.Println("Activating system DNS")
-	core.ActivateSystemDNSBestEffort()
+	core.ActivatePlatformSystemDNSBestEffort()
 	defer func() {
-		log.Println("Deactivating system DNS")
-		core.DeactivateSystemDNSBestEffort()
+		log.Println("Restoring system DNS")
+		core.RestoreSystemDNSBestEffort()
 	}()
 
 	watchNetworkDNSChanges(ctx)

@@ -82,9 +82,9 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 	// Strict activation is the install contract even though the daemon also
 	// best-effort activates on startup via manageSystemDNS.
 	log.Println("Verifying system DNS points to 127.0.0.1...")
-	if err := activateSystemDNSFunc(); err != nil {
+	if err := activatePlatformSystemDNSFunc(); err != nil {
 		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
-		return outcome, fmt.Errorf("set system DNS: %w", err)
+		return outcome, fmt.Errorf("activate system DNS: %w", err)
 	}
 
 	if err := state.PersistInstallState(profileID, dohServer, apiServer); err != nil {
@@ -118,11 +118,11 @@ func rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState bool, prevState s
 	}
 
 	if prevDNSLocal {
-		if err := activateSystemDNSFunc(); err != nil {
+		if err := activatePlatformSystemDNSFunc(); err != nil {
 			log.Printf("Rollback warning: failed to restore local DNS setting: %v", err)
 		}
 	} else {
-		if err := deactivateSystemDNSStrictFunc(); err != nil {
+		if err := restoreSystemDNSStrictFunc(); err != nil {
 			log.Printf("Rollback warning: failed to restore DNS defaults: %v", err)
 		}
 	}
