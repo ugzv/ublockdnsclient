@@ -3,6 +3,7 @@
 package core
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -25,6 +26,16 @@ func testLinuxDNSPaths(t *testing.T, dir string) linuxDNSPaths {
 	}
 	t.Cleanup(SwapLinuxDNSPaths(paths))
 	return paths
+}
+
+func stubLinuxDNSCommands(t *testing.T) {
+	t.Helper()
+	t.Cleanup(SwapCommandRunner(func(name string, args ...string) error {
+		if name == "systemctl" && len(args) >= 2 && args[0] == "is-active" {
+			return errors.New("inactive")
+		}
+		return nil
+	}))
 }
 
 func TestRestoreResolvConfFromUBlockDNSBackup(t *testing.T) {
@@ -57,6 +68,7 @@ func TestRestoreResolvConfFromUBlockDNSBackup(t *testing.T) {
 }
 
 func TestCleanupManagedResolvConfIfNeeded(t *testing.T) {
+	stubLinuxDNSCommands(t)
 	dir := t.TempDir()
 	paths := testLinuxDNSPaths(t, dir)
 
@@ -98,6 +110,7 @@ func TestRestoreDhclientConfig(t *testing.T) {
 }
 
 func TestRestorePlatformInstallArtifactsRemovesManagedFiles(t *testing.T) {
+	stubLinuxDNSCommands(t)
 	dir := t.TempDir()
 	paths := testLinuxDNSPaths(t, dir)
 
@@ -195,6 +208,7 @@ func TestRestoreConnmanConfigRestoresBackup(t *testing.T) {
 }
 
 func TestConfigureAndRestoreRoundTrip(t *testing.T) {
+	stubLinuxDNSCommands(t)
 	dir := t.TempDir()
 	paths := testLinuxDNSPaths(t, dir)
 

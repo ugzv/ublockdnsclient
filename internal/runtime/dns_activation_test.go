@@ -11,11 +11,15 @@ import (
 
 func TestManageSystemDNSActivatesAndDeactivates(t *testing.T) {
 	var activated, deactivated atomic.Bool
-	t.Cleanup(core.SwapSystemDNSFuncs(
-		func(string) error {
+	t.Cleanup(core.SwapPlatformSystemDNSFuncs(
+		func() error {
 			activated.Store(true)
 			return nil
 		},
+		func() error { return nil },
+	))
+	t.Cleanup(core.SwapSystemDNSFuncs(
+		nil,
 		func() error {
 			deactivated.Store(true)
 			return nil
@@ -57,8 +61,8 @@ func TestManageSystemDNSActivatesAndDeactivates(t *testing.T) {
 
 func TestDefaultWatchNetworkDNSChangesReactivatesOnChange(t *testing.T) {
 	var activations atomic.Int32
-	t.Cleanup(core.SwapSystemDNSFuncs(
-		func(string) error {
+	t.Cleanup(core.SwapPlatformSystemDNSFuncs(
+		func() error {
 			activations.Add(1)
 			return nil
 		},

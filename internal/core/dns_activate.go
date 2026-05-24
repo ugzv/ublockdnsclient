@@ -11,8 +11,10 @@ import (
 const LocalDNSAddress = "127.0.0.1"
 
 var (
-	setSystemDNSFunc   = host.SetDNS
-	resetSystemDNSFunc = host.ResetDNS
+	setSystemDNSFunc                    = host.SetDNS
+	resetSystemDNSFunc                  = host.ResetDNS
+	activatePlatformSystemDNSFunc       = activatePlatformSystemDNS
+	restorePlatformInstallArtifactsFunc = restorePlatformInstallArtifacts
 )
 
 // ActivateSystemDNS points the host resolver at the local uBlockDNS proxy via nextdns.
@@ -24,7 +26,7 @@ func ActivateSystemDNS() error {
 // ActivatePlatformSystemDNS applies the platform-specific system DNS install path.
 // Linux uses the durable uBlockDNS layer only; other platforms use nextdns SetDNS.
 func ActivatePlatformSystemDNS() error {
-	return activatePlatformSystemDNS()
+	return activatePlatformSystemDNSFunc()
 }
 
 // ActivatePlatformSystemDNSBestEffort logs and continues when activation fails.
@@ -72,7 +74,7 @@ func restoreSystemDNS(strict bool) ([]string, error) {
 		log.Printf("Warning: failed to %s: %v", step, err)
 	}
 
-	record("restore install artifacts", restorePlatformInstallArtifacts())
+	record("restore install artifacts", restorePlatformInstallArtifactsFunc())
 	record("deactivate legacy system DNS", resetSystemDNSFunc())
 
 	if err := FlushDNSCaches(); err != nil {
@@ -94,5 +96,21 @@ func SwapSystemDNSFuncs(set func(string) error, reset func() error) (restore fun
 	return func() {
 		setSystemDNSFunc = oldSet
 		resetSystemDNSFunc = oldReset
+	}
+}
+
+// SwapPlatformSystemDNSFuncs overrides platform DNS hooks and returns a restore func.
+func SwapPlatformSystemDNSFuncs(activate func() error, restoreArtifacts func() error) func() {
+	oldActivate := activatePlatformSystemDNSFunc
+	oldRestoreArtifacts := restorePlatformInstallArtifactsFunc
+	if activate != nil {
+		activatePlatformSystemDNSFunc = activate
+	}
+	if restoreArtifacts != nil {
+		restorePlatformInstallArtifactsFunc = restoreArtifacts
+	}
+	return func() {
+		activatePlatformSystemDNSFunc = oldActivate
+		restorePlatformInstallArtifactsFunc = oldRestoreArtifacts
 	}
 }
