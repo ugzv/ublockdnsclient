@@ -30,6 +30,7 @@ func testLinuxDNSPaths(t *testing.T, dir string) linuxDNSPaths {
 
 func stubLinuxDNSCommands(t *testing.T) {
 	t.Helper()
+	t.Setenv("PATH", "")
 	t.Cleanup(SwapCommandRunner(func(name string, args ...string) error {
 		if name == "systemctl" && len(args) >= 2 && args[0] == "is-active" {
 			return errors.New("inactive")
