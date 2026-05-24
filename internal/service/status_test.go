@@ -2,43 +2,18 @@ package service
 
 import (
 	"errors"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ugzv/ublockdnsclient/internal/state"
 )
 
 func TestCurrentStatusIncludesProbeFailureDetails(t *testing.T) {
-	oldServiceState := serviceStateFunc
-	oldSystemDNS := systemDNSFunc
-	oldProbe := localDNSProbeFunc
-	oldLoadInstallState := loadInstallState
-	oldHostDNS := hostDNSFunc
-	oldCommandOutput := commandOutputFunc
-	oldReadFile := readFileFunc
-	t.Cleanup(func() {
-		serviceStateFunc = oldServiceState
-		systemDNSFunc = oldSystemDNS
-		localDNSProbeFunc = oldProbe
-		loadInstallState = oldLoadInstallState
-		hostDNSFunc = oldHostDNS
-		commandOutputFunc = oldCommandOutput
-		readFileFunc = oldReadFile
+	withStatusTestEnv(t, statusTestEnv{
+		serviceState:     func() (string, error) { return "running", nil },
+		resolveSystemDNS: func() systemDNSAssessment { return localSystemDNS() },
+		localDNSProbe:    func() error { return errors.New("udp timeout") },
+		loadInstallState: missingInstallState,
 	})
-
-	serviceStateFunc = func() (string, error) { return "running", nil }
-	systemDNSFunc = func() []string { return []string{"127.0.0.1"} }
-	localDNSProbeFunc = func() error { return errors.New("udp timeout") }
-	loadInstallState = func() (state.InstallState, error) { return state.InstallState{}, errors.New("missing") }
-	hostDNSFunc = func() []string { return []string{"127.0.0.1"} }
-	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
-		return []byte("Global: 127.0.0.1\n"), nil
-	}
-	readFileFunc = func(name string) ([]byte, error) {
-		return []byte("nameserver 127.0.0.1\n"), nil
-	}
 
 	info := CurrentStatus()
 	if info.Ready {
@@ -56,34 +31,12 @@ func TestCurrentStatusIncludesProbeFailureDetails(t *testing.T) {
 }
 
 func TestCurrentStatusMarksReadyAfterSuccessfulProbe(t *testing.T) {
-	oldServiceState := serviceStateFunc
-	oldSystemDNS := systemDNSFunc
-	oldProbe := localDNSProbeFunc
-	oldLoadInstallState := loadInstallState
-	oldHostDNS := hostDNSFunc
-	oldCommandOutput := commandOutputFunc
-	oldReadFile := readFileFunc
-	t.Cleanup(func() {
-		serviceStateFunc = oldServiceState
-		systemDNSFunc = oldSystemDNS
-		localDNSProbeFunc = oldProbe
-		loadInstallState = oldLoadInstallState
-		hostDNSFunc = oldHostDNS
-		commandOutputFunc = oldCommandOutput
-		readFileFunc = oldReadFile
+	withStatusTestEnv(t, statusTestEnv{
+		serviceState:     func() (string, error) { return "running", nil },
+		resolveSystemDNS: func() systemDNSAssessment { return localSystemDNS() },
+		localDNSProbe:    func() error { return nil },
+		loadInstallState: missingInstallState,
 	})
-
-	serviceStateFunc = func() (string, error) { return "running", nil }
-	systemDNSFunc = func() []string { return []string{"127.0.0.1"} }
-	localDNSProbeFunc = func() error { return nil }
-	loadInstallState = func() (state.InstallState, error) { return state.InstallState{}, errors.New("missing") }
-	hostDNSFunc = func() []string { return []string{"127.0.0.1"} }
-	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
-		return []byte("Global: 127.0.0.1\n"), nil
-	}
-	readFileFunc = func(name string) ([]byte, error) {
-		return []byte("nameserver 127.0.0.1\n"), nil
-	}
 
 	info := CurrentStatus()
 	if !info.Ready {
@@ -97,32 +50,147 @@ func TestCurrentStatusMarksReadyAfterSuccessfulProbe(t *testing.T) {
 	}
 }
 
-func TestWaitUntilReadyReturnsReadinessFailure(t *testing.T) {
-	oldStatus := currentStatusFunc
-	oldNow := nowFunc
-	oldSleep := sleepFunc
-	t.Cleanup(func() {
-		currentStatusFunc = oldStatus
-		nowFunc = oldNow
-		sleepFunc = oldSleep
+func TestResolveSystemDNSFuncUsesInjection(t *testing.T) {
+	withStatusTestEnv(t, statusTestEnv{
+		resolveSystemDNS: func() systemDNSAssessment {
+			return systemDNSAssessment{DNS: []string{"1.2.3.4"}, LocalDNS: false}
+		},
 	})
 
+	assessment := resolveSystemDNSFunc()
+	if len(assessment.DNS) != 1 || assessment.DNS[0] != "1.2.3.4" {
+		t.Fatalf("expected injected DNS, got %+v", assessment)
+	}
+}
+
+func TestEvaluateReadiness(t *testing.T) {
+	tests := []struct {
+		name     string
+		svcState string
+		localDNS bool
+		probeErr error
+		want     readinessVerdict
+	}{
+		{
+			name:     "not installed",
+			svcState: "not-installed",
+			want: readinessVerdict{
+				status: "inactive",
+				code:   "service_not_installed",
+				detail: "uBlockDNS service is not installed.",
+			},
+		},
+		{
+			name:     "stopped",
+			svcState: "stopped",
+			want: readinessVerdict{
+				status: "inactive",
+				code:   "service_stopped",
+				detail: "uBlockDNS service is installed but not running.",
+			},
+		},
+		{
+			name:     "dns not local",
+			svcState: "running",
+			localDNS: false,
+			want: readinessVerdict{
+				status:   "inactive",
+				code:     "dns_not_local",
+				detail:   "System DNS does not point to 127.0.0.1.",
+				warnings: []string{"service is running but system DNS is not pointing to 127.0.0.1"},
+			},
+		},
+		{
+			name:     "probe failed",
+			svcState: "running",
+			localDNS: true,
+			probeErr: errors.New("udp timeout"),
+			want: readinessVerdict{
+				status:   "inactive",
+				code:     "local_dns_probe_failed",
+				detail:   "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+				probeErr: "udp timeout",
+				warnings: []string{"local DNS probe failed: udp timeout"},
+			},
+		},
+		{
+			name:     "ready",
+			svcState: "running",
+			localDNS: true,
+			want: readinessVerdict{
+				status: "active",
+				ready:  true,
+				code:   "ready",
+				detail: "uBlockDNS is responding on 127.0.0.1:53.",
+			},
+		},
+		{
+			name:     "local dns but stopped service",
+			svcState: "stopped",
+			localDNS: true,
+			want: readinessVerdict{
+				status:   "inactive",
+				code:     "service_stopped",
+				detail:   "uBlockDNS service is installed but not running.",
+				warnings: []string{"system DNS includes 127.0.0.1 but service is not running"},
+			},
+		},
+		{
+			name:     "unknown service state",
+			svcState: "unknown",
+			localDNS: true,
+			probeErr: errors.New("probe failed"),
+			want: readinessVerdict{
+				status:   "inactive",
+				code:     "local_dns_probe_failed",
+				detail:   "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+				probeErr: "probe failed",
+				warnings: []string{
+					"local DNS probe failed: probe failed",
+					"service state could not be determined; readiness was inferred from DNS settings and probe results",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withStatusTestEnv(t, statusTestEnv{
+				localDNSProbe: func() error { return tt.probeErr },
+			})
+
+			got := evaluateReadiness(tt.svcState, tt.localDNS)
+			if got.status != tt.want.status ||
+				got.ready != tt.want.ready ||
+				got.code != tt.want.code ||
+				got.detail != tt.want.detail ||
+				got.probeErr != tt.want.probeErr ||
+				!sameStringSet(got.warnings, tt.want.warnings) {
+				t.Fatalf("evaluateReadiness() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWaitUntilReadyReturnsReadinessFailure(t *testing.T) {
 	now := time.Unix(0, 0)
-	currentStatusFunc = func() StatusInfo {
-		return StatusInfo{
-			Ready:       false,
-			Status:      "inactive",
-			Service:     "running",
-			LocalDNS:    true,
-			ReadyCode:   "local_dns_probe_failed",
-			ReadyDetail: "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
-			ProbeError:  "probe failed",
-		}
-	}
-	nowFunc = func() time.Time { return now }
-	sleepFunc = func(time.Duration) {
-		now = now.Add(30 * time.Millisecond)
-	}
+	withStatusTestEnv(t, statusTestEnv{
+		currentStatus: func() StatusInfo {
+			return StatusInfo{
+				Ready:       false,
+				Status:      "inactive",
+				Service:     "running",
+				LocalDNS:    true,
+				ReadyCode:   "local_dns_probe_failed",
+				ReadyDetail: "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+				ProbeError:  "probe failed",
+			}
+		},
+		now: func() time.Time { return now },
+		sleep: func(time.Duration) {
+			now = now.Add(30 * time.Millisecond)
+		},
+	})
 
 	info, err := WaitUntilReady(50 * time.Millisecond)
 	if err == nil {
@@ -137,36 +205,29 @@ func TestWaitUntilReadyReturnsReadinessFailure(t *testing.T) {
 }
 
 func TestWaitUntilReadySucceedsAfterProbePasses(t *testing.T) {
-	oldStatus := currentStatusFunc
-	oldNow := nowFunc
-	oldSleep := sleepFunc
-	t.Cleanup(func() {
-		currentStatusFunc = oldStatus
-		nowFunc = oldNow
-		sleepFunc = oldSleep
-	})
-
 	now := time.Unix(0, 0)
 	statusCalls := 0
-	currentStatusFunc = func() StatusInfo {
-		statusCalls++
-		if statusCalls < 2 {
-			return StatusInfo{
-				Ready:       false,
-				Status:      "inactive",
-				Service:     "running",
-				LocalDNS:    true,
-				ReadyCode:   "local_dns_probe_failed",
-				ReadyDetail: "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
-				ProbeError:  "not yet",
+	withStatusTestEnv(t, statusTestEnv{
+		currentStatus: func() StatusInfo {
+			statusCalls++
+			if statusCalls < 2 {
+				return StatusInfo{
+					Ready:       false,
+					Status:      "inactive",
+					Service:     "running",
+					LocalDNS:    true,
+					ReadyCode:   "local_dns_probe_failed",
+					ReadyDetail: "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+					ProbeError:  "not yet",
+				}
 			}
-		}
-		return StatusInfo{Ready: true, Status: "active", Service: "running", LocalDNS: true, ReadyCode: "ready"}
-	}
-	nowFunc = func() time.Time { return now }
-	sleepFunc = func(time.Duration) {
-		now = now.Add(10 * time.Millisecond)
-	}
+			return StatusInfo{Ready: true, Status: "active", Service: "running", LocalDNS: true, ReadyCode: "ready"}
+		},
+		now: func() time.Time { return now },
+		sleep: func(time.Duration) {
+			now = now.Add(10 * time.Millisecond)
+		},
+	})
 
 	info, err := WaitUntilReady(100 * time.Millisecond)
 	if err != nil {
@@ -180,115 +241,24 @@ func TestWaitUntilReadySucceedsAfterProbePasses(t *testing.T) {
 	}
 }
 
-func TestAssessLinuxResolverDNSPrefersAuthoritativeLocalDNS(t *testing.T) {
-	oldHostDNS := hostDNSFunc
-	oldCommandOutput := commandOutputFunc
-	oldReadFile := readFileFunc
-	t.Cleanup(func() {
-		hostDNSFunc = oldHostDNS
-		commandOutputFunc = oldCommandOutput
-		readFileFunc = oldReadFile
-	})
-
-	hostDNSFunc = func() []string { return []string{"8.8.8.8", "8.8.4.4"} }
-	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
-		if name == "resolvectl" && len(args) == 1 && args[0] == "dns" {
-			return []byte("Global: 127.0.0.1\nLink 2 (wlan0): 192.168.2.1\n"), nil
-		}
-		return nil, errors.New("unexpected command")
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
 	}
-	readFileFunc = func(name string) ([]byte, error) {
-		if name == "/etc/resolv.conf" {
-			return []byte("nameserver 127.0.0.1\n"), nil
-		}
-		return nil, errors.New("unexpected file")
+	seen := make(map[string]int, len(a))
+	for _, v := range a {
+		seen[v]++
 	}
-
-	assessment := assessLinuxResolverDNS()
-	if !assessment.LocalDNS {
-		t.Fatalf("expected local DNS assessment, got %+v", assessment)
-	}
-	if !sameDNSSet(assessment.DNS, []string{"127.0.0.1", "192.168.2.1"}) {
-		t.Fatalf("expected resolvectl DNS to win, got %+v", assessment)
-	}
-	if len(assessment.Warnings) == 0 {
-		t.Fatalf("expected disagreement warning, got %+v", assessment)
-	}
-	if !strings.Contains(assessment.Warnings[0], "upstream DNS") {
-		t.Fatalf("expected upstream metadata warning, got %+v", assessment)
-	}
-}
-
-func TestAssessLinuxResolverDNSFallsBackToResolvConf(t *testing.T) {
-	oldHostDNS := hostDNSFunc
-	oldCommandOutput := commandOutputFunc
-	oldReadFile := readFileFunc
-	t.Cleanup(func() {
-		hostDNSFunc = oldHostDNS
-		commandOutputFunc = oldCommandOutput
-		readFileFunc = oldReadFile
-	})
-
-	hostDNSFunc = func() []string { return []string{"8.8.8.8"} }
-	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
-		return nil, errors.New("resolvectl unavailable")
-	}
-	readFileFunc = func(name string) ([]byte, error) {
-		return []byte("# managed\nnameserver 127.0.0.1\n"), nil
-	}
-
-	assessment := assessLinuxResolverDNS()
-	if !assessment.LocalDNS {
-		t.Fatalf("expected resolv.conf local DNS assessment, got %+v", assessment)
-	}
-	if !sameDNSSet(assessment.DNS, []string{"127.0.0.1"}) {
-		t.Fatalf("expected resolv.conf DNS, got %+v", assessment)
-	}
-}
-
-func TestCurrentStatusUsesLinuxResolverAssessment(t *testing.T) {
-	oldServiceState := serviceStateFunc
-	oldSystemDNS := systemDNSFunc
-	oldProbe := localDNSProbeFunc
-	oldLoadInstallState := loadInstallState
-	oldHostDNS := hostDNSFunc
-	oldCommandOutput := commandOutputFunc
-	oldReadFile := readFileFunc
-	t.Cleanup(func() {
-		serviceStateFunc = oldServiceState
-		systemDNSFunc = oldSystemDNS
-		localDNSProbeFunc = oldProbe
-		loadInstallState = oldLoadInstallState
-		hostDNSFunc = oldHostDNS
-		commandOutputFunc = oldCommandOutput
-		readFileFunc = oldReadFile
-	})
-
-	serviceStateFunc = func() (string, error) { return "running", nil }
-	systemDNSFunc = func() []string { return []string{"8.8.8.8", "8.8.4.4"} }
-	localDNSProbeFunc = func() error { return nil }
-	loadInstallState = func() (state.InstallState, error) { return state.InstallState{}, errors.New("missing") }
-	hostDNSFunc = func() []string { return []string{"8.8.8.8", "8.8.4.4"} }
-	commandOutputFunc = func(name string, args ...string) ([]byte, error) {
-		if name == "resolvectl" {
-			return []byte("Global: 127.0.0.1\n"), nil
-		}
-		return nil, errors.New("unexpected command")
-	}
-	readFileFunc = func(name string) ([]byte, error) {
-		return []byte("nameserver 127.0.0.1\n"), nil
-	}
-
-	info := CurrentStatus()
-	if runtime.GOOS == "linux" {
-		if !info.Ready || info.Status != "active" {
-			t.Fatalf("expected linux assessment to mark active, got %+v", info)
-		}
-		if !info.LocalDNS {
-			t.Fatalf("expected local DNS true, got %+v", info)
-		}
-		if !sameDNSSet(info.SystemDNS, []string{"127.0.0.1"}) {
-			t.Fatalf("expected authoritative local DNS, got %+v", info)
+	for _, v := range b {
+		seen[v]--
+		if seen[v] < 0 {
+			return false
 		}
 	}
+	for _, n := range seen {
+		if n != 0 {
+			return false
+		}
+	}
+	return true
 }

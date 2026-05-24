@@ -3,11 +3,9 @@ package service
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/nextdns/nextdns/host"
-	"github.com/nextdns/nextdns/host/service"
 	"github.com/ugzv/ublockdnsclient/internal/core"
 	"github.com/ugzv/ublockdnsclient/internal/state"
 )
@@ -34,15 +32,25 @@ var (
 	localDNSProbeFunc = func() error {
 		return core.CheckLocalDNSProxy(readinessProbeHost)
 	}
-	serviceStateFunc  = serviceState
-	systemDNSFunc     = currentSystemDNS
-	loadInstallState  = state.LoadInstallState
-	nowFunc           = time.Now
-	sleepFunc         = time.Sleep
-	hostDNSFunc       = host.DNS
-	commandOutputFunc = core.CommandOutput
-	readFileFunc      = os.ReadFile
+	serviceStateFunc          = platformServiceState
+	resolveSystemDNSFunc      = resolveSystemDNS
+	loadInstallState          = state.LoadInstallState
+	nowFunc                   = time.Now
+	sleepFunc                 = time.Sleep
+	hostDNSFunc               = host.DNS
+	commandOutputFunc         = core.CommandOutput
+	commandCombinedOutputFunc = core.CommandCombinedOutput
+	readFileFunc              = os.ReadFile
 )
+
+type readinessVerdict struct {
+	status   string
+	ready    bool
+	code     string
+	detail   string
+	probeErr string
+	warnings []string
+}
 
 func serviceCurrentlyInstalled() bool {
 	st, err := serviceStateFunc()
@@ -53,17 +61,7 @@ func serviceCurrentlyInstalled() bool {
 }
 
 func CurrentStatus() StatusInfo {
-	dns := systemDNSFunc()
-	localDNS := core.HasDNS127001(dns)
-	var warnings []string
-	if runtime.GOOS == "linux" {
-		assessment := assessLinuxResolverDNS()
-		if len(assessment.DNS) > 0 {
-			dns = assessment.DNS
-			localDNS = assessment.LocalDNS
-		}
-		warnings = append(warnings, assessment.Warnings...)
-	}
+	dnsAssessment := resolveSystemDNSFunc()
 
 	svcState := "unknown"
 	if st, err := serviceStateFunc(); err == nil {
@@ -73,52 +71,68 @@ func CurrentStatus() StatusInfo {
 	info := StatusInfo{
 		Status:    "inactive",
 		Ready:     false,
-		SystemDNS: dns,
-		LocalDNS:  localDNS,
+		SystemDNS: dnsAssessment.DNS,
+		LocalDNS:  dnsAssessment.LocalDNS,
 		Service:   svcState,
+		Warnings:  append([]string(nil), dnsAssessment.Warnings...),
 	}
 	if st, err := loadInstallState(); err == nil {
 		info.ProfileID = st.ProfileID
 		info.DoHServer = st.DoHServer
 		info.APIServer = st.APIServer
 	}
-	info.Warnings = append(info.Warnings, warnings...)
+
+	verdict := evaluateReadiness(svcState, dnsAssessment.LocalDNS)
+	info.Status = verdict.status
+	info.Ready = verdict.ready
+	info.ReadyCode = verdict.code
+	info.ReadyDetail = verdict.detail
+	info.ProbeError = verdict.probeErr
+	info.Warnings = append(info.Warnings, verdict.warnings...)
+
+	return info
+}
+
+func evaluateReadiness(svcState string, localDNS bool) readinessVerdict {
+	verdict := readinessVerdict{
+		status: "inactive",
+	}
 
 	switch {
 	case svcState == "not-installed":
-		info.ReadyCode = "service_not_installed"
-		info.ReadyDetail = "uBlockDNS service is not installed."
+		verdict.code = "service_not_installed"
+		verdict.detail = "uBlockDNS service is not installed."
 	case svcState == "stopped":
-		info.ReadyCode = "service_stopped"
-		info.ReadyDetail = "uBlockDNS service is installed but not running."
+		verdict.code = "service_stopped"
+		verdict.detail = "uBlockDNS service is installed but not running."
 	case !localDNS:
-		info.ReadyCode = "dns_not_local"
-		info.ReadyDetail = "System DNS does not point to 127.0.0.1."
+		verdict.code = "dns_not_local"
+		verdict.detail = "System DNS does not point to 127.0.0.1."
 	default:
 		if err := localDNSProbeFunc(); err != nil {
-			info.ReadyCode = "local_dns_probe_failed"
-			info.ReadyDetail = "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe."
-			info.ProbeError = err.Error()
-			info.Warnings = append(info.Warnings, fmt.Sprintf("local DNS probe failed: %v", err))
+			verdict.code = "local_dns_probe_failed"
+			verdict.detail = "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe."
+			verdict.probeErr = err.Error()
+			verdict.warnings = append(verdict.warnings, fmt.Sprintf("local DNS probe failed: %v", err))
 		} else {
-			info.Status = "active"
-			info.Ready = true
-			info.ReadyCode = "ready"
-			info.ReadyDetail = "uBlockDNS is responding on 127.0.0.1:53."
+			verdict.status = "active"
+			verdict.ready = true
+			verdict.code = "ready"
+			verdict.detail = "uBlockDNS is responding on 127.0.0.1:53."
 		}
 	}
 
 	if svcState == "running" && !localDNS {
-		info.Warnings = append(info.Warnings, "service is running but system DNS is not pointing to 127.0.0.1")
+		verdict.warnings = append(verdict.warnings, "service is running but system DNS is not pointing to 127.0.0.1")
 	}
 	if localDNS && svcState != "running" && svcState != "unknown" {
-		info.Warnings = append(info.Warnings, "system DNS includes 127.0.0.1 but service is not running")
+		verdict.warnings = append(verdict.warnings, "system DNS includes 127.0.0.1 but service is not running")
 	}
 	if svcState == "unknown" {
-		info.Warnings = append(info.Warnings, "service state could not be determined; readiness was inferred from DNS settings and probe results")
+		verdict.warnings = append(verdict.warnings, "service state could not be determined; readiness was inferred from DNS settings and probe results")
 	}
 
-	return info
+	return verdict
 }
 
 func WaitUntilReady(timeout time.Duration) (StatusInfo, error) {
@@ -149,54 +163,4 @@ func waitReadyError(info StatusInfo, timeout time.Duration) error {
 		return fmt.Errorf("%s: %s (%s)", prefix, info.ReadyDetail, info.ProbeError)
 	}
 	return fmt.Errorf("%s: %s", prefix, info.ReadyDetail)
-}
-
-func serviceState() (string, error) {
-	if runtime.GOOS == "windows" {
-		if st, ok := windowsServiceState(); ok {
-			return st, nil
-		}
-		return "unknown", fmt.Errorf("could not determine windows service state")
-	}
-
-	svc, err := baseService()
-	if err != nil {
-		return "unknown", err
-	}
-	st, err := svc.Status()
-	if err != nil {
-		return "unknown", err
-	}
-	return mapServiceStatus(st), nil
-}
-
-func mapServiceStatus(st service.Status) string {
-	switch st {
-	case service.StatusRunning:
-		return "running"
-	case service.StatusStopped:
-		return "stopped"
-	case service.StatusNotInstalled:
-		return "not-installed"
-	default:
-		return "unknown"
-	}
-}
-
-func currentSystemDNS() []string {
-	// On macOS, host.DNS() can report stale/non-primary resolver values.
-	// Prefer scutil output when available.
-	if runtime.GOOS == "darwin" {
-		if dns, err := dnsFromScutil(); err == nil && len(dns) > 0 {
-			return dns
-		}
-	}
-	// On Windows, host.DNS() can return empty on some adapter setups.
-	// Prefer native adapter DNS query output when available.
-	if runtime.GOOS == "windows" {
-		if dns, err := dnsFromWindowsPowerShell(); err == nil && len(dns) > 0 {
-			return dns
-		}
-	}
-	return host.DNS()
 }

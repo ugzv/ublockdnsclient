@@ -30,7 +30,7 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		return InstallOutcomeFresh, fmt.Errorf("install requires elevated privileges - %s", installPrivilegeHint())
 	}
 
-	prevDNSLocal := core.HasDNS127001(currentSystemDNS())
+	prevDNSLocal := core.HasDNS127001(resolveSystemDNSFunc().DNS)
 	prevInstalled := serviceCurrentlyInstalled()
 	prevState, prevStateErr := state.LoadInstallState()
 	hasPrevState := prevStateErr == nil && strings.TrimSpace(prevState.ProfileID) != ""

@@ -8,13 +8,18 @@ import (
 	"github.com/ugzv/ublockdnsclient/internal/core"
 )
 
+var scutilNameserverRE = regexp.MustCompile(`nameserver\[[0-9]+\]\s*:\s*([^\s]+)`)
+
+func resolveSystemDNS() systemDNSAssessment {
+	return assessFromPrimary("scutil", dnsFromScutil)
+}
+
 func dnsFromScutil() ([]string, error) {
-	out, err := core.CommandOutput("scutil", "--dns")
+	out, err := commandOutputFunc("scutil", "--dns")
 	if err != nil {
 		return nil, err
 	}
-	re := regexp.MustCompile(`nameserver\[[0-9]+\]\s*:\s*([^\s]+)`)
-	matches := re.FindAllStringSubmatch(string(out), -1)
+	matches := scutilNameserverRE.FindAllStringSubmatch(string(out), -1)
 	if len(matches) == 0 {
 		return nil, nil
 	}
