@@ -23,8 +23,10 @@ Create a free account at [ublockdns.com](https://ublockdns.com), then follow the
 Quick install for macOS and Linux:
 
 ```sh
-curl -sSf https://ublockdns.com/install.sh | sh -s -- <profile-id>
+curl -sSfL https://ublockdns.com/install.sh | sh -s -- <profile-id>
 ```
+
+Use `-L` so curl follows Cloudflare redirects on the hosted install script.
 
 During installation, you may be prompted for your Mac or Linux administrator password to update system DNS settings.
 
@@ -40,15 +42,17 @@ sh install.sh <profile-id>
 Windows 10 or later (PowerShell as Administrator):
 
 ```powershell
-iwr https://ublockdns.com/install.ps1 -OutFile install.ps1; powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
+irm https://ublockdns.com/install?id=<profile-id> | iex
 ```
+
+The dashboard uses this bootstrap flow. It downloads the installer from `/install-script`, which avoids Cloudflare redirect issues that can break direct `/install.ps1` downloads.
 
 Published Windows installers and binaries require Windows 10 or later. Windows 7, Windows 8, and Windows 8.1 are not supported.
 
 Verify installer script checksum (PowerShell):
 
 ```powershell
-iwr https://ublockdns.com/install.ps1 -OutFile install.ps1
+iwr https://ublockdns.com/install-script -OutFile install.ps1
 iwr https://github.com/ugzv/ublockdnsclient/releases/latest/download/SCRIPT_SHA256SUMS -OutFile SCRIPT_SHA256SUMS
 $expected = (Select-String -Path .\SCRIPT_SHA256SUMS -Pattern " install.ps1$").Line.Split()[0].ToLower()
 $actual = (Get-FileHash .\install.ps1 -Algorithm SHA256).Hash.ToLower()

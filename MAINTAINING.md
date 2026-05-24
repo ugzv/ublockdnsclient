@@ -22,9 +22,11 @@
    - `setup.ps1`
 5. Smoke test installers:
    - Use the tagged release assets for the exact version being validated, not raw `main`.
-   - Unix: `curl -sSf https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.sh | sh -s -- <profile-id>`
-   - Windows 10+ (Admin PowerShell):
-     - `iwr https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.ps1 -OutFile install.ps1`
+   - Unix: `curl -sSfL https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.sh | sh -s -- <profile-id>`
+   - Hosted Unix (served by backend): `curl -sSfL https://ublockdns.com/install.sh | sh -s -- <profile-id>`
+   - Windows 10+ (Admin PowerShell, dashboard flow): `irm https://ublockdns.com/install?id=<profile-id> | iex`
+   - Windows 10+ (manual script download): use `/install-script`, not `/install.ps1` — Cloudflare can redirect `.ps1` URLs to an HTML page.
+     - `iwr https://ublockdns.com/install-script -OutFile install.ps1`
      - `powershell -ExecutionPolicy Bypass -File .\\install.ps1 -ProfileId <profile-id> -Version vX.Y.Z`
 6. Validate runtime:
    - `ublockdns version`
@@ -34,6 +36,8 @@
 
 ## Notes
 
+- Hosted install URLs (`https://ublockdns.com/...`) are served by the backend from embedded copies of `install.sh` and `install.ps1` in `ublockdns/internal/api/`. Sync those files from this repo when installer behavior changes.
+- Cloudflare sits in front of `ublockdns.com`. Use `curl -sSfL` for Unix pipe installs so redirects are followed. On Windows, prefer the dashboard bootstrap (`/install?id=...`) or download from `/install-script` instead of `/install.ps1` directly.
 - Internal package layout:
   - `internal/core`: shared helpers, validation, config constants, DNS probe/cache utilities
   - `internal/runtime`: proxy startup, upstream endpoint handling, rules stream/watcher logic
