@@ -62,6 +62,12 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 -ProfileId <profile-id>
 
 A Windows GUI installer (.exe) is also available on the [releases page](https://github.com/ugzv/ublockdnsclient/releases).
 
+### Updating
+
+The service updates itself daily; releases are verified against the uBlockDNS signing key before being applied. Set `UBLOCKDNS_NO_AUTOUPDATE=1` in the service environment to opt out, or update manually with `sudo ublockdns upgrade`.
+
+Older versions without the `upgrade` command: re-run the install command once and automatic updates take over.
+
 ### Other platforms
 
 The dashboard setup guide also covers Chrome, Firefox, iOS, Android, and routers. These use DNS-over-HTTPS directly and don't require this client.
@@ -81,6 +87,7 @@ ublockdns status                             Show service state and readiness de
 ublockdns status -json                       Show machine-readable status with ready_code and probe_error
 ublockdns wait-ready -timeout 45s            Wait until service and DNS are active
 ublockdns wait-ready -timeout 45s -json      Emit machine-readable readiness state for automation
+ublockdns upgrade                            Update to the latest release and restart the service
 ublockdns version                            Print version
 ```
 
