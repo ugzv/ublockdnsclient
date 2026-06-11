@@ -27,7 +27,7 @@ func TestManageSystemDNSActivatesAndDeactivates(t *testing.T) {
 	))
 
 	oldWatch := watchNetworkDNSChanges
-	watchNetworkDNSChanges = func(ctx context.Context) {
+	watchNetworkDNSChanges = func(ctx context.Context, _ func(context.Context)) {
 		<-ctx.Done()
 	}
 	t.Cleanup(func() { watchNetworkDNSChanges = oldWatch })
@@ -35,7 +35,7 @@ func TestManageSystemDNSActivatesAndDeactivates(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		manageSystemDNS(ctx)
+		manageSystemDNS(ctx, nil)
 		close(done)
 	}()
 
@@ -60,7 +60,7 @@ func TestManageSystemDNSActivatesAndDeactivates(t *testing.T) {
 }
 
 func TestDefaultWatchNetworkDNSChangesReactivatesOnChange(t *testing.T) {
-	var activations atomic.Int32
+	var activations, changeCallbacks atomic.Int32
 	t.Cleanup(core.SwapPlatformSystemDNSFuncs(
 		func() error {
 			activations.Add(1)
@@ -82,7 +82,7 @@ func TestDefaultWatchNetworkDNSChangesReactivatesOnChange(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		defaultWatchNetworkDNSChanges(ctx)
+		defaultWatchNetworkDNSChanges(ctx, func(context.Context) { changeCallbacks.Add(1) })
 		close(done)
 	}()
 
@@ -92,6 +92,9 @@ func TestDefaultWatchNetworkDNSChangesReactivatesOnChange(t *testing.T) {
 	}
 	if activations.Load() != 1 {
 		t.Fatalf("activation count = %d, want 1 re-activation on network change", activations.Load())
+	}
+	if changeCallbacks.Load() != 1 {
+		t.Fatalf("onChange callback count = %d, want 1", changeCallbacks.Load())
 	}
 
 	cancel()

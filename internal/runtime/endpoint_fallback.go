@@ -17,16 +17,19 @@ var fallbackDNSServers = []string{
 	"9.9.9.9:53",
 }
 
-func newEndpointManager(dohEndpoint endpoint.Endpoint) *endpoint.Manager {
+func newEndpointManager(dohProvider endpoint.Provider, initEndpoint endpoint.Endpoint) *endpoint.Manager {
 	m := &endpoint.Manager{
 		Providers: []endpoint.Provider{
-			endpoint.StaticProvider([]endpoint.Endpoint{dohEndpoint}),
+			dohProvider,
 			endpoint.ProviderFunc(func(ctx context.Context) ([]endpoint.Endpoint, error) {
 				eps := fallbackDNSEndpoints()
 				return eps, nil
 			}),
 		},
-		InitEndpoint: dohEndpoint,
+		InitEndpoint: initEndpoint,
+		// Re-test on the first failed query instead of the library default of
+		// 10, so a dead connection after wake/network change fails over fast.
+		ErrorThreshold: 1,
 	}
 
 	// Override the upstream library probe domain so startup checks do not emit

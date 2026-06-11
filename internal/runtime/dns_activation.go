@@ -9,7 +9,7 @@ import (
 
 var watchNetworkDNSChanges = defaultWatchNetworkDNSChanges
 
-func defaultWatchNetworkDNSChanges(ctx context.Context) {
+func defaultWatchNetworkDNSChanges(ctx context.Context, onChange func(ctx context.Context)) {
 	changes := make(chan string, 1)
 	go watchNetworkChanges(ctx, changes)
 
@@ -20,13 +20,16 @@ func defaultWatchNetworkDNSChanges(ctx context.Context) {
 		case reason := <-changes:
 			log.Printf("Network change detected: %s; re-activating system DNS", reason)
 			core.ActivatePlatformSystemDNSBestEffort()
+			if onChange != nil {
+				onChange(ctx)
+			}
 		}
 	}
 }
 
 // manageSystemDNS activates local DNS for the lifetime of ctx, re-applying on
 // network changes and restoring defaults when the proxy stops.
-func manageSystemDNS(ctx context.Context) {
+func manageSystemDNS(ctx context.Context, onNetworkChange func(ctx context.Context)) {
 	log.Println("Activating system DNS")
 	core.ActivatePlatformSystemDNSBestEffort()
 	defer func() {
@@ -34,5 +37,5 @@ func manageSystemDNS(ctx context.Context) {
 		core.RestoreSystemDNSBestEffort()
 	}()
 
-	watchNetworkDNSChanges(ctx)
+	watchNetworkDNSChanges(ctx, onNetworkChange)
 }

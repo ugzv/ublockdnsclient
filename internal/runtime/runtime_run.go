@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru"
@@ -50,7 +51,14 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 		Bootstrap: bootstrapIPs,
 	}
 
-	mgr := newEndpointManager(dohEndpoint)
+	// Held behind an atomic so bootstrap IPs can be refreshed on network
+	// changes without restarting the daemon.
+	var dohEp atomic.Pointer[endpoint.DOHEndpoint]
+	dohEp.Store(dohEndpoint)
+
+	mgr := newEndpointManager(endpoint.ProviderFunc(func(context.Context) ([]endpoint.Endpoint, error) {
+		return []endpoint.Endpoint{dohEp.Load()}, nil
+	}), dohEndpoint)
 
 	// Client-side DNS response cache. Avoids upstream round-trips for
 	// frequently queried domains. Purged on rule updates via SSE so that
@@ -62,7 +70,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 
 	p := proxy.Proxy{
 		Addrs: []string{listenAddr},
-		Upstream: &resolver.DNS{
+		Upstream: retryResolver{inner: &resolver.DNS{
 			DOH: resolver.DOH{
 				URL:   dohURL,
 				Cache: dnsCache,
@@ -71,7 +79,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 				},
 			},
 			Manager: mgr,
-		},
+		}},
 		QueryLog: func(qi proxy.QueryInfo) {
 			log.Printf("%-5s %s %s", qi.Protocol, qi.UpstreamTransport, qi.Name)
 		},
@@ -84,7 +92,14 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 		onInit  []func(ctx context.Context)
 		onReady []func(ctx context.Context)
 	)
-	onReady = append(onReady, manageSystemDNS)
+	refresher := &bootstrapRefresher{hostname: dohHostname, path: dohPath, ep: &dohEp, mgr: mgr}
+	onNetworkChange := func(ctx context.Context) {
+		// Match upstream nextdns: re-probe endpoints so a dead DoH connection
+		// is replaced immediately instead of after queries fail into it.
+		testEndpoints(ctx, mgr, "network change")
+		refresher.refresh(ctx)
+	}
+	onReady = append(onReady, func(ctx context.Context) { manageSystemDNS(ctx, onNetworkChange) })
 
 	if cfg.AccountToken != "" {
 		onInit = append(onInit, func(ctx context.Context) {

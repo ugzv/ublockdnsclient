@@ -25,7 +25,7 @@ func (e *recordingEndpoint) Exchange(_ context.Context, payload, buf []byte) (in
 
 func TestEndpointTesterOverridesProbeDomain(t *testing.T) {
 	e := &recordingEndpoint{}
-	mgr := newEndpointManager(e)
+	mgr := newEndpointManager(endpoint.StaticProvider([]endpoint.Endpoint{e}), e)
 
 	tester := mgr.EndpointTester(e)
 	if tester == nil {
