@@ -28,6 +28,7 @@ Usage:
                       [-server <url>] Optional DoH server base URL (for local/dev)
                       [-api-server <url>] Optional API server URL (for local/dev)
                       [-token <account-token>] Optional account token for instant rules update cache flush
+  ublockdns upgrade   [-api-server <url>]  Update to the latest release and restart the service
   ublockdns status    [-json]          Show current status
   ublockdns wait-ready [-timeout <d>]  Wait until service and DNS are active
   ublockdns version                    Print version
@@ -118,6 +119,18 @@ func main() {
 			fmt.Println("uBlockDNS service removed. DNS may need manual cleanup — see warnings above.")
 		}
 		fmt.Println("The client binary was kept on disk. Remove it manually if you no longer need it.")
+
+	case "upgrade":
+		fmt.Println("Checking for updates...")
+		v, err := service.Upgrade(version, app_runtime.ResolveAPIServer(flagValue("-api-server"), ""))
+		if err != nil {
+			log.Fatalf("Upgrade failed: %v", err)
+		}
+		if v == "" {
+			fmt.Printf("ublockdns v%s is up to date.\n", version)
+		} else {
+			fmt.Printf("Upgraded to v%s.\n", v)
+		}
 
 	case "start":
 		fmt.Println("Starting uBlockDNS service...")

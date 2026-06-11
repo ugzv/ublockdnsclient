@@ -56,6 +56,7 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
 		return outcome, fmt.Errorf("install service: %w", err)
 	}
+	ensureSystemdRestartPolicy()
 
 	// Install must fail if the service cannot start; unlike ServiceStart, this
 	// is not a repair path and we need a hard guarantee before activating DNS.
