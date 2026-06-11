@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 
 // Run starts the DNS proxy in the foreground.
 func Run(version, profileID, overrideServer, overrideAPIServer, accountToken string) error {
+	setupDaemonLogging()
 	listenAddr := "127.0.0.1:53"
 	cfg, err := resolveRuntimeConfig(profileID, overrideServer, overrideAPIServer, accountToken)
 	if err != nil {
@@ -68,6 +70,11 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 		return fmt.Errorf("create DNS cache: %w", err)
 	}
 
+	// As a daemon, query logs persist to disk: never write domain names there
+	// unless explicitly opted in. Failures are logged without the query name.
+	logQueryNames := service.CurrentRunMode() != service.RunModeService ||
+		os.Getenv("UBLOCKDNS_QUERY_LOG") == "1"
+
 	p := proxy.Proxy{
 		Addrs: []string{listenAddr},
 		Upstream: retryResolver{inner: &resolver.DNS{
@@ -81,7 +88,14 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 			Manager: mgr,
 		}},
 		QueryLog: func(qi proxy.QueryInfo) {
-			log.Printf("%-5s %s %s", qi.Protocol, qi.UpstreamTransport, qi.Name)
+			switch {
+			case qi.Error != nil && logQueryNames:
+				log.Printf("%-5s %s %s: %v", qi.Protocol, qi.UpstreamTransport, qi.Name, qi.Error)
+			case qi.Error != nil:
+				log.Printf("%-5s %s query failed: %v", qi.Protocol, qi.UpstreamTransport, qi.Error)
+			case logQueryNames:
+				log.Printf("%-5s %s %s", qi.Protocol, qi.UpstreamTransport, qi.Name)
+			}
 		},
 		Timeout:             5 * time.Second,
 		MaxInflightRequests: 256,

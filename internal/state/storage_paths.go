@@ -20,3 +20,14 @@ func tokenDir() string {
 	}
 	return "/etc/ublockdns"
 }
+
+func DaemonLogPath() string {
+	switch runtime.GOOS {
+	case "windows":
+		return filepath.Join(tokenDir(), "ublockdns.log")
+	case "darwin":
+		return "/Library/Logs/ublockdns.log"
+	default:
+		return "/var/log/ublockdns.log"
+	}
+}
