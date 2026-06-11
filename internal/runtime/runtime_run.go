@@ -115,6 +115,12 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 	}
 	onReady = append(onReady, func(ctx context.Context) { manageSystemDNS(ctx, onNetworkChange) })
 
+	if service.CurrentRunMode() == service.RunModeService {
+		onInit = append(onInit, func(ctx context.Context) {
+			watchUpdates(ctx, version, cfg.APIServer)
+		})
+	}
+
 	if cfg.AccountToken != "" {
 		onInit = append(onInit, func(ctx context.Context) {
 			watchRulesUpdates(ctx, cfg.APIServer, cfg.ProfileID, cfg.AccountToken, dnsCache.Purge)
