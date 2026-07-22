@@ -1,9 +1,25 @@
 package core
 
-import "os/exec"
+import (
+	"bytes"
+	"fmt"
+	"os/exec"
+	"strings"
+)
 
 var runCommandFunc = func(name string, args ...string) error {
-	return exec.Command(name, args...).Run()
+	var stderr bytes.Buffer
+	cmd := exec.Command(name, args...)
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return nil
+	}
+	desc := strings.Join(append([]string{name}, args...), " ")
+	if msg := strings.TrimSpace(stderr.String()); msg != "" {
+		return fmt.Errorf("%s: %w: %s", desc, err, msg)
+	}
+	return fmt.Errorf("%s: %w", desc, err)
 }
 
 func RunCommand(name string, args ...string) error {
