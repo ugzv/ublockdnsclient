@@ -10,10 +10,6 @@ func ConfigureLinuxSystemDNS() error {
 	return nil
 }
 
-func PrepareLinuxSystemDNSForInstall() error {
-	return nil
-}
-
 func restorePlatformInstallArtifacts() error {
 	return nil
 }

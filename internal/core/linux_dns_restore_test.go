@@ -243,6 +243,63 @@ func TestConfigureAndRestoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestConfigureAndRestoreWithSymlinkedResolvConf(t *testing.T) {
+	dir := t.TempDir()
+	paths := testLinuxDNSPaths(t, dir)
+
+	fakeBin := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(fakeBin, 0o755); err != nil {
+		t.Fatalf("mkdir fake bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(fakeBin, "chattr"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write fake chattr: %v", err)
+	}
+	t.Setenv("PATH", fakeBin)
+
+	configuring := true
+	t.Cleanup(SwapCommandRunner(func(name string, args ...string) error {
+		if configuring && name == "chattr" && len(args) > 0 && args[0] == "-i" {
+			t.Errorf("chattr -i invoked on symlinked resolv.conf: %v", args)
+		}
+		if name == "systemctl" && len(args) >= 2 && args[0] == "is-active" {
+			return errors.New("inactive")
+		}
+		return nil
+	}))
+
+	target := filepath.Join(dir, "stub-resolv.conf")
+	if err := os.WriteFile(target, []byte("nameserver 127.0.0.53\n"), 0o644); err != nil {
+		t.Fatalf("write stub target: %v", err)
+	}
+	if err := os.Symlink(target, paths.ResolvConf); err != nil {
+		t.Fatalf("symlink resolv.conf: %v", err)
+	}
+
+	if err := ConfigureLinuxSystemDNS(); err != nil {
+		t.Fatalf("ConfigureLinuxSystemDNS() error = %v", err)
+	}
+	configuring = false
+
+	got, err := os.ReadFile(paths.ResolvConf)
+	if err != nil {
+		t.Fatalf("read configured resolv.conf: %v", err)
+	}
+	if !containsLine(got, "nameserver 127.0.0.1") {
+		t.Fatalf("configured resolv.conf = %q", got)
+	}
+
+	if err := restorePlatformInstallArtifacts(); err != nil {
+		t.Fatalf("restorePlatformInstallArtifacts() error = %v", err)
+	}
+	link, err := os.Readlink(paths.ResolvConf)
+	if err != nil {
+		t.Fatalf("expected resolv.conf symlink restored: %v", err)
+	}
+	if link != target {
+		t.Fatalf("restored symlink target = %q, want %q", link, target)
+	}
+}
+
 func TestRestoreResolvConfFromSymlinkBackup(t *testing.T) {
 	dir := t.TempDir()
 	paths := testLinuxDNSPaths(t, dir)

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -21,7 +22,7 @@ func restorePlatformInstallArtifacts() error {
 		}
 	}
 
-	appendErr(unlockResolvConf(paths))
+	unlockResolvConf(paths)
 
 	restoredFromUBlock, err := restoreResolvConfFromUBlockDNSBackup(paths)
 	appendErr(err)
@@ -57,11 +58,16 @@ type restartLinuxDNSOptions struct {
 	restartConnman       bool
 }
 
-func unlockResolvConf(paths linuxDNSPaths) error {
-	if _, err := exec.LookPath("chattr"); err != nil {
-		return nil
+func unlockResolvConf(paths linuxDNSPaths) {
+	info, err := os.Lstat(paths.ResolvConf)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 {
+		return
 	}
-	return RunCommand("chattr", "-i", paths.ResolvConf)
+	if _, err := exec.LookPath("chattr"); err == nil {
+		if err := RunCommand("chattr", "-i", paths.ResolvConf); err != nil {
+			log.Printf("Warning: unlock resolv.conf: %v", err)
+		}
+	}
 }
 
 func restoreResolvConfFromUBlockDNSBackup(paths linuxDNSPaths) (bool, error) {
@@ -104,7 +110,7 @@ func cleanupManagedResolvConfIfNeeded(paths linuxDNSPaths) error {
 	if !strings.Contains(string(data), managedResolvMarker) {
 		return nil
 	}
-	_ = unlockResolvConf(paths)
+	unlockResolvConf(paths)
 	if err := os.Remove(paths.ResolvConf); err != nil && !os.IsNotExist(err) {
 		return err
 	}

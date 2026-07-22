@@ -9,11 +9,6 @@ import (
 	"os/exec"
 )
 
-// PrepareLinuxSystemDNSForInstall unlocks durable resolv.conf settings before reinstall.
-func PrepareLinuxSystemDNSForInstall() error {
-	return unlockResolvConf(linuxDNSPathsActive())
-}
-
 // ConfigureLinuxSystemDNS applies durable Linux DNS settings for new installs.
 func ConfigureLinuxSystemDNS() error {
 	paths := linuxDNSPathsActive()
@@ -132,9 +127,7 @@ func backupResolvConf(paths linuxDNSPaths) error {
 }
 
 func writeManagedResolvConf(paths linuxDNSPaths) error {
-	if err := unlockResolvConf(paths); err != nil {
-		return err
-	}
+	unlockResolvConf(paths)
 
 	if info, err := os.Lstat(paths.ResolvConf); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		if err := os.Remove(paths.ResolvConf); err != nil {
