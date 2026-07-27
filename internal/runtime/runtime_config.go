@@ -21,7 +21,7 @@ var loadPersistedTokenFunc = state.LoadPersistedToken
 
 func resolveRuntimeConfig(profileID, overrideDoHServer, overrideAPIServer, accountToken string) (RuntimeConfig, error) {
 	dohServer := ResolveDoHServer(overrideDoHServer)
-	apiServer := ResolveAPIServer(overrideAPIServer, dohServer)
+	apiServer := ResolveAPIServer(overrideAPIServer)
 	token, err := resolveAccountToken(profileID, accountToken)
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -60,7 +60,7 @@ func ResolveDoHServer(overrideServer string) string {
 	return core.DefaultDoHServer
 }
 
-func ResolveAPIServer(overrideServer, _ string) string {
+func ResolveAPIServer(overrideServer string) string {
 	if overrideServer = strings.TrimSpace(overrideServer); overrideServer != "" {
 		return strings.TrimRight(overrideServer, "/")
 	}

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/ugzv/ublockdnsclient/internal/core"
@@ -21,6 +22,7 @@ Usage:
                       [-server <url>] Optional DoH server base URL (for local/dev)
                       [-api-server <url>] Optional API server URL (for local/dev)
                       [-token <account-token>] Optional account token for instant rules update cache flush
+                      [-token-file <path>] Read the account token from a file instead of argv
   ublockdns uninstall                  Remove service and restore DNS
   ublockdns start                      Start the service
   ublockdns stop                       Stop the service
@@ -28,19 +30,13 @@ Usage:
                       [-server <url>] Optional DoH server base URL (for local/dev)
                       [-api-server <url>] Optional API server URL (for local/dev)
                       [-token <account-token>] Optional account token for instant rules update cache flush
+                      [-token-file <path>] Read the account token from a file instead of argv
   ublockdns upgrade   [-api-server <url>]  Update to the latest release and restart the service
   ublockdns status    [-json]          Show current status
   ublockdns wait-ready [-timeout <d>]  Wait until service and DNS are active
   ublockdns version                    Print version
 
 `, version)
-}
-
-type profileCommandSpec struct {
-	startMessage string
-	failPrefix   string
-	run          func(args profileArgs) error
-	onSuccess    func(normalizedProfileID string)
 }
 
 type profileArgs struct {
@@ -68,20 +64,14 @@ func main() {
 		fmt.Printf("ublockdns v%s\n", version)
 
 	case "run":
-		executeProfileCommand(profileCommandSpec{
-			startMessage: "Starting uBlockDNS in foreground...",
-			failPrefix:   "Error",
-			run: func(args profileArgs) error {
-				return app_runtime.Run(version, args.profileID, args.dohServer, args.apiServer, args.token)
-			},
-		})
+		args := mustParseProfileArgs()
+		fmt.Println("Starting uBlockDNS in foreground...")
+		if err := app_runtime.Run(version, args.profileID, args.dohServer, args.apiServer, args.token); err != nil {
+			log.Fatalf("Error: %v", err)
+		}
 
 	case "install":
-		args, err := parseProfileArgs()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
-		}
+		args := mustParseProfileArgs()
 		fmt.Println("Installing uBlockDNS service...")
 		outcome, err := service.InstallDetailed(args.profileID, args.dohServer, args.apiServer, args.token)
 		if err != nil {
@@ -122,7 +112,7 @@ func main() {
 
 	case "upgrade":
 		fmt.Println("Checking for updates...")
-		v, err := service.Upgrade(version, app_runtime.ResolveAPIServer(flagValue("-api-server"), ""))
+		v, err := service.Upgrade(version, app_runtime.ResolveAPIServer(flagValue("-api-server")))
 		if err != nil {
 			log.Fatalf("Upgrade failed: %v", err)
 		}
@@ -192,22 +182,13 @@ func main() {
 	}
 }
 
-func executeProfileCommand(spec profileCommandSpec) {
+func mustParseProfileArgs() profileArgs {
 	args, err := parseProfileArgs()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-
-	if spec.startMessage != "" {
-		fmt.Println(spec.startMessage)
-	}
-	if err := spec.run(args); err != nil {
-		log.Fatalf("%s: %v", spec.failPrefix, err)
-	}
-	if spec.onSuccess != nil {
-		spec.onSuccess(args.profileID)
-	}
+	return args
 }
 
 func parseProfileArgs() (profileArgs, error) {
@@ -215,12 +196,33 @@ func parseProfileArgs() (profileArgs, error) {
 	if err != nil {
 		return profileArgs{}, err
 	}
+	token, err := resolveTokenArg()
+	if err != nil {
+		return profileArgs{}, err
+	}
 	return profileArgs{
 		profileID: profileID,
 		dohServer: flagValue("-server"),
 		apiServer: flagValue("-api-server"),
-		token:     flagValue("-token"),
+		token:     token,
 	}, nil
+}
+
+// resolveTokenArg sources the account token, preferring the forms that keep it
+// out of the process list, where any local user can read it. -token is still
+// honoured first for backwards compatibility with existing scripts.
+func resolveTokenArg() (string, error) {
+	if token := strings.TrimSpace(flagValue("-token")); token != "" {
+		return token, nil
+	}
+	if path := flagValue("-token-file"); path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read token file %q: %w", path, err)
+		}
+		return strings.TrimSpace(string(data)), nil
+	}
+	return strings.TrimSpace(os.Getenv("UBLOCKDNS_ACCOUNT_TOKEN")), nil
 }
 
 func pauseBeforeExit() {
@@ -234,10 +236,30 @@ func pauseBeforeExit() {
 	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 }
 
+// splitFlag normalizes one argument into a canonical single-dash flag name and
+// its inline value, so "-profile x", "--profile x", "-profile=x" and
+// "--profile=x" are all accepted. Non-flag arguments simply fail to match any
+// known name.
+func splitFlag(arg string) (name, value string, hasValue bool) {
+	name = "-" + strings.TrimLeft(arg, "-")
+	if key, v, ok := strings.Cut(name, "="); ok {
+		return key, v, true
+	}
+	return name, "", false
+}
+
+// Flags are only read after the subcommand, which is always os.Args[1].
 func flagValue(name string) string {
-	for i, arg := range os.Args {
-		if arg == name && i+1 < len(os.Args) {
-			if isKnownFlag(os.Args[i+1]) {
+	for i := 2; i < len(os.Args); i++ {
+		flag, value, hasValue := splitFlag(os.Args[i])
+		if flag != name {
+			continue
+		}
+		if hasValue {
+			return value
+		}
+		if i+1 < len(os.Args) {
+			if next, _, _ := splitFlag(os.Args[i+1]); isKnownFlag(next) {
 				return ""
 			}
 			return os.Args[i+1]
@@ -247,8 +269,8 @@ func flagValue(name string) string {
 }
 
 func flagPresent(name string) bool {
-	for _, arg := range os.Args {
-		if arg == name {
+	for i := 2; i < len(os.Args); i++ {
+		if flag, _, _ := splitFlag(os.Args[i]); flag == name {
 			return true
 		}
 	}
@@ -269,7 +291,7 @@ func parseDurationFlag(name string, fallback time.Duration) (time.Duration, erro
 
 func isKnownFlag(arg string) bool {
 	switch arg {
-	case "-profile", "-server", "-api-server", "-token", "-json", "-timeout":
+	case "-profile", "-server", "-api-server", "-token", "-token-file", "-json", "-timeout":
 		return true
 	default:
 		return false
