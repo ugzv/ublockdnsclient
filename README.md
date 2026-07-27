@@ -101,7 +101,7 @@ When you update filter lists or custom rules in the dashboard, the client receiv
 
 ## Build from source
 
-Requires Go 1.23 or later.
+Requires Go 1.25 or later.
 
 ```sh
 go build -o ublockdns .

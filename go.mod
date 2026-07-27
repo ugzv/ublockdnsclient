@@ -1,6 +1,6 @@
 module github.com/ugzv/ublockdnsclient
 
-go 1.23.4
+go 1.25.0
 
 require (
 	github.com/hashicorp/golang-lru v1.0.2
@@ -8,6 +8,6 @@ require (
 )
 
 require (
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 )
