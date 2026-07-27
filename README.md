@@ -68,6 +68,24 @@ The service updates itself daily; releases are verified against the uBlockDNS si
 
 Older versions without the `upgrade` command: re-run the install command once and automatic updates take over.
 
+### Uninstalling
+
+macOS and Linux:
+
+```sh
+sudo ublockdns uninstall
+```
+
+Windows (PowerShell as Administrator):
+
+```powershell
+& "$env:ProgramFiles\uBlockDNS\ublockdns.exe" uninstall
+```
+
+The leading `&` is required. Without it PowerShell treats the quoted path as a plain string and reports `Unexpected token 'uninstall'`.
+
+Uninstalling stops the service and restores your previous DNS settings. The binary stays on disk; delete it manually if you no longer want it. Run `ublockdns status` afterwards to confirm system DNS no longer points at `127.0.0.1`.
+
 ### Other platforms
 
 The dashboard setup guide also covers Chrome, Firefox, iOS, Android, and routers. These use DNS-over-HTTPS directly and don't require this client.
