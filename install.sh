@@ -143,8 +143,39 @@ main() {
 
     # ── Parse arguments ──────────────────────────────────────
 
-    PROFILE_ID="${1:-}"
-    ACCOUNT_TOKEN="${2:-}"
+    # --version pins the release to install, matching -Version in install.ps1.
+    # Without it the newest non-prerelease is used. Release candidates are only
+    # reachable by pinning, since GitHub excludes them from "latest".
+    REQUESTED_VERSION="${UBLOCKDNS_VERSION:-}"
+    POSITIONAL_1=""
+    POSITIONAL_2=""
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --version|-version)
+                if [ -z "${2:-}" ]; then
+                    error "--version requires a release tag, e.g. --version v0.3.0"
+                    exit 1
+                fi
+                REQUESTED_VERSION="$2"
+                shift 2
+                ;;
+            --version=*|-version=*)
+                REQUESTED_VERSION="${1#*=}"
+                shift
+                ;;
+            *)
+                if [ -z "$POSITIONAL_1" ]; then
+                    POSITIONAL_1="$1"
+                elif [ -z "$POSITIONAL_2" ]; then
+                    POSITIONAL_2="$1"
+                fi
+                shift
+                ;;
+        esac
+    done
+
+    PROFILE_ID="$POSITIONAL_1"
+    ACCOUNT_TOKEN="$POSITIONAL_2"
 
     if [ -z "$PROFILE_ID" ]; then
         printf "\n"
@@ -154,6 +185,9 @@ main() {
         printf "\n"
         printf "  ${BOLD}Usage:${RESET}\n"
         printf "    curl -sSf https://github.com/${REPO}/releases/latest/download/install.sh | sh -s -- ${DIM}<profile-id>${RESET}\n"
+        printf "\n"
+        printf "  ${BOLD}Options:${RESET}\n"
+        printf "    --version ${DIM}<tag>${RESET}   Install a specific release instead of the newest\n"
         printf "\n"
         printf "  Get your profile ID at ${BOLD}https://ublockdns.com${RESET}\n"
         printf "\n"
@@ -178,13 +212,15 @@ main() {
 
     # ── Fetch latest release tag ─────────────────────────────
 
-    TAG=""
-    if has curl; then
-        TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
-            | grep '"tag_name"' | head -1 | cut -d'"' -f4) || true
-    elif has wget; then
-        TAG=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
-            | grep '"tag_name"' | head -1 | cut -d'"' -f4) || true
+    TAG="$REQUESTED_VERSION"
+    if [ -z "$TAG" ]; then
+        if has curl; then
+            TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+                | grep '"tag_name"' | head -1 | cut -d'"' -f4) || true
+        elif has wget; then
+            TAG=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+                | grep '"tag_name"' | head -1 | cut -d'"' -f4) || true
+        fi
     fi
 
     if [ -n "$TAG" ]; then

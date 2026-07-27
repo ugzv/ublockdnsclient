@@ -22,7 +22,8 @@
    - `setup.ps1`
 5. Smoke test installers:
    - Use the tagged release assets for the exact version being validated, not raw `main`.
-   - Unix: `curl -sSfL https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.sh | sh -s -- <profile-id>`
+   - Pass `--version` on Unix and `-Version` on Windows. Without them the installers resolve GitHub's "latest", so downloading a tagged `install.sh` still installs whatever is current, and a release candidate is never installable at all (GitHub excludes prereleases from "latest").
+   - Unix: `curl -sSfL https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.sh | sh -s -- <profile-id> --version vX.Y.Z`
    - Hosted Unix (served by backend): `curl -sSfL https://ublockdns.com/install.sh | sh -s -- <profile-id>`
    - Windows 10+ (Admin PowerShell, dashboard flow): `irm https://ublockdns.com/install?id=<profile-id> | iex`
    - Windows 10+ (manual script download): use `/install-script`, not `/install.ps1` — Cloudflare can redirect `.ps1` URLs to an HTML page.
