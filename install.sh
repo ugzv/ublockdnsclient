@@ -12,6 +12,7 @@ BINARY="ublockdns"
 INSTALL_DIR="/usr/local/bin"
 TMP_BIN=""
 TMP_SUMS=""
+TMP_TOKEN=""
 READY_STATUS_JSON=""
 
 # ── Terminal colors ──────────────────────────────────────────
@@ -39,6 +40,8 @@ run_as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 cleanup() {
     [ -n "$TMP_BIN" ] && [ -f "$TMP_BIN" ] && rm -f "$TMP_BIN"
     [ -n "$TMP_SUMS" ] && [ -f "$TMP_SUMS" ] && rm -f "$TMP_SUMS"
+    [ -n "$TMP_TOKEN" ] && [ -f "$TMP_TOKEN" ] && rm -f "$TMP_TOKEN"
+    return 0
 }
 
 # ── Download with retries ───────────────────────────────────
@@ -256,10 +259,19 @@ main() {
     # ── Register system service ──────────────────────────────
 
     info "Setting up system service..."
-    install_args="-profile $PROFILE_ID"
-    [ -n "$ACCOUNT_TOKEN" ] && install_args="$install_args -token $ACCOUNT_TOKEN"
 
-    if ! run_as_root "${INSTALL_DIR}/${BINARY}" install $install_args; then
+    # The token goes through a 0600 file rather than argv: command lines are
+    # world-readable in `ps`, and the pipe-to-shell form would also leave the
+    # token in the caller's shell history.
+    set -- install -profile "$PROFILE_ID"
+    if [ -n "$ACCOUNT_TOKEN" ]; then
+        TMP_TOKEN="$(mktemp "/tmp/${BINARY}.token.XXXXXX")"
+        chmod 600 "$TMP_TOKEN"
+        printf '%s' "$ACCOUNT_TOKEN" > "$TMP_TOKEN"
+        set -- "$@" -token-file "$TMP_TOKEN"
+    fi
+
+    if ! run_as_root "${INSTALL_DIR}/${BINARY}" "$@"; then
         error "Service installation failed."
         [ -n "$EXISTING" ] && warn "Tip: run 'sudo ublockdns uninstall' first, then retry."
         exit 1

@@ -41,6 +41,7 @@
 ## Notes
 
 - Hosted install URLs (`https://ublockdns.com/...`) are served by the backend from embedded copies of `install.sh` and `install.ps1` in `ublockdns/internal/api/`. Sync those files from this repo when installer behavior changes.
+- Ordering matters when an installer starts using a new client flag: `install.sh` passes the account token via `-token-file`, so the hosted copy must not be synced until a release containing that flag is published. The installer always downloads the latest release, so publishing first is sufficient.
 - Cloudflare sits in front of `ublockdns.com`. Use `curl -sSfL` for Unix pipe installs so redirects are followed. On Windows, prefer the dashboard bootstrap (`/install?id=...`) or download from `/install-script` instead of `/install.ps1` directly.
 - Internal package layout:
   - `internal/core`: shared helpers, validation, config constants, DNS probe/cache utilities; Linux durable DNS lives in `linux_dns_*.go`

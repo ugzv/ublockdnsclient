@@ -250,12 +250,19 @@ if (-not $replaced) {
 }
 
 $installArgs = @("install", "-profile", $ProfileId)
-if ($AccountToken) {
-    $installArgs += @("-token", $AccountToken)
-}
 
 Write-Host "Configuring service ..."
-& $exePath @installArgs
+try {
+    # Passed through the environment rather than argv: command lines are
+    # readable by other processes on the machine, environment blocks are not.
+    # The script already runs elevated, so the child inherits it directly.
+    if ($AccountToken) {
+        $env:UBLOCKDNS_ACCOUNT_TOKEN = $AccountToken
+    }
+    & $exePath @installArgs
+} finally {
+    Remove-Item Env:\UBLOCKDNS_ACCOUNT_TOKEN -ErrorAction SilentlyContinue
+}
 if ($LASTEXITCODE -ne 0) {
     throw "Service installation failed with exit code $LASTEXITCODE."
 }
