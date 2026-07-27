@@ -19,10 +19,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Released binaries are built with the current Go toolchain so they carry
+      # up-to-date stdlib security fixes; go.mod's directive stays the minimum
+      # version required to build from source.
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7

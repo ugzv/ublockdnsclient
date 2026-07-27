@@ -6,7 +6,31 @@ on:
   pull_request:
 
 jobs:
+  # Every supported platform has build-tagged code (privilege checks, service
+  # state, system DNS lookup) that only compiles under its own GOOS, so tests
+  # run natively on all three rather than only on Linux.
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: go build ./...
+
+  checks:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -15,7 +39,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: Verify formatting
         run: |
@@ -29,16 +53,43 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test
-        run: go test ./...
-
-      - name: Build
-        run: go build ./...
+      - name: Vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
       - name: Cross-compile smoke builds
         run: |
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
           GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build ./...
           GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./...
           GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 go build ./...
           GOOS=freebsd GOARCH=amd64 CGO_ENABLED=0 go build ./...
+
+  # install.sh, install.ps1 and setup.ps1 are published release artifacts and
+  # are how most users first run this software, but nothing compiles them.
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Shellcheck install.sh
+        run: shellcheck -S warning install.sh
+
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($script in @("install.ps1", "setup.ps1")) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $script), [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) {
+              $failed = $true
+              Write-Host "::error file=$script::$($errors.Count) parse error(s)"
+              $errors | ForEach-Object { Write-Host "  $($_.Extent.StartLineNumber): $($_.Message)" }
+            } else {
+              Write-Host "$script parsed cleanly"
+            }
+          }
+          if ($failed) { exit 1 }
