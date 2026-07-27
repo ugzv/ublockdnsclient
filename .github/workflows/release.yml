@@ -106,7 +106,7 @@ jobs:
           Set-Content -Path "out/GUI_SHA256SUMS" -Value "$hash  $(Split-Path -Leaf $gui)"
 
       - name: Upload GUI installer to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe
