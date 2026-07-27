@@ -18,7 +18,7 @@ var (
 // activateSystemDNS points the host resolver at the local uBlockDNS proxy via
 // nextdns. Non-Linux platforms reach it through ActivatePlatformSystemDNS.
 func activateSystemDNS() error {
-	return setSystemDNSFunc(LocalDNSAddress)
+	return setSystemDNSFunc(LocalDNSIP)
 }
 
 // ActivatePlatformSystemDNS applies the platform-specific system DNS install path.
@@ -111,7 +111,7 @@ func SwapPlatformSystemDNSFuncs(activate func() error, restoreArtifacts func() e
 
 func HasDNS127001(dns []string) bool {
 	for _, d := range dns {
-		if d == LocalDNSAddress {
+		if d == LocalDNSIP {
 			return true
 		}
 	}

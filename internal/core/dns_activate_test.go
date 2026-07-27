@@ -20,8 +20,8 @@ func TestActivateSystemDNSUsesLocalAddress(t *testing.T) {
 	if err := activateSystemDNS(); err != nil {
 		t.Fatalf("activateSystemDNS() error = %v", err)
 	}
-	if got != LocalDNSAddress {
-		t.Fatalf("set DNS address = %q, want %q", got, LocalDNSAddress)
+	if got != LocalDNSIP {
+		t.Fatalf("set DNS address = %q, want %q", got, LocalDNSIP)
 	}
 }
 
