@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/ugzv/ublockdnsclient/internal/core"
 	"github.com/ugzv/ublockdnsclient/internal/state"
@@ -17,10 +18,24 @@ const (
 	InstallOutcomeSwitched InstallOutcome = "switched"
 )
 
-// install sets up ublockdns as a system service.
-func Install(profileID, dohServer, apiServer, accountToken string) error {
-	_, err := InstallDetailed(profileID, dohServer, apiServer, accountToken)
-	return err
+// localDNSPreflightTimeout bounds how long install waits for the freshly
+// started proxy to answer before reporting the preflight as failed.
+const localDNSPreflightTimeout = 10 * time.Second
+
+// waitForLocalDNSProxy polls the local proxy until it answers or the timeout
+// elapses, returning the last probe error.
+func waitForLocalDNSProxy(timeout time.Duration) error {
+	deadline := nowFunc().Add(timeout)
+	for {
+		err := localDNSProbeFunc()
+		if err == nil {
+			return nil
+		}
+		if !nowFunc().Before(deadline) {
+			return err
+		}
+		sleepFunc(250 * time.Millisecond)
+	}
 }
 
 // InstallDetailed installs (or reinstalls) the service and returns a UX-friendly outcome.
@@ -47,8 +62,16 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		return outcome, err
 	}
 
-	// Uninstall any previous version first.
-	_ = stopServiceAndRestoreDNS(svc)
+	// Uninstall any previous version first. Stopping is skipped when nothing is
+	// installed: attempting it anyway is what printed "Warning: failed to stop
+	// service: Unit ublockdns.service not loaded" on every first-time install,
+	// which reads as a failure in an install that is going fine. DNS artifacts
+	// are still cleared, since a previously rolled-back install can leave them
+	// behind with no service registered.
+	if prevInstalled {
+		_ = stopService(svc)
+	}
+	restoreSystemDNSBestEffortFunc()
 	_ = svc.Uninstall()
 
 	log.Println("Installing service...")
@@ -76,7 +99,12 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 
 	// Best-effort readiness probe only. Do not fail install if upstream DNS is
 	// temporarily unavailable (matches NextDNS install behavior).
-	if err := core.CheckLocalDNSProxy("example.com"); err != nil {
+	//
+	// The proxy finishes binding asynchronously after Start returns, so probing
+	// once immediately reported "connection refused" on healthy installs and
+	// then succeeded moments later. Poll instead, and warn only if it never
+	// comes up.
+	if err := waitForLocalDNSProxy(localDNSPreflightTimeout); err != nil {
 		log.Printf("Warning: local DNS preflight failed (continuing): %v", err)
 	}
 
