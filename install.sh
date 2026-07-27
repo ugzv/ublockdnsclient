@@ -46,11 +46,18 @@ cleanup() {
 
 # ── Download with retries ───────────────────────────────────
 
+# Names what is being fetched, and only mentions attempt numbers when an
+# attempt has actually failed. Announcing "attempt 1/3" up front made two
+# ordinary downloads look like a retry loop.
 download() {
-    url="$1" dest="$2" attempts=3 i=1
+    url="$1" dest="$2" label="$3" attempts=3 i=1
 
     while [ "$i" -le "$attempts" ]; do
-        info "Downloading (attempt ${i}/${attempts})..."
+        if [ "$i" -eq 1 ]; then
+            info "Downloading ${label}..."
+        else
+            warn "Retrying ${label} (attempt ${i} of ${attempts})..."
+        fi
 
         if has curl; then
             curl -fsSL --connect-timeout 10 "$url" -o "$dest" && return 0
@@ -60,7 +67,7 @@ download() {
             error "Either curl or wget is required."; return 1
         fi
 
-        [ "$i" -lt "$attempts" ] && { warn "Retrying in 2s..."; sleep 2; }
+        [ "$i" -lt "$attempts" ] && sleep 2
         i=$((i + 1))
     done
 
@@ -254,18 +261,18 @@ main() {
 
     # ── Download binary (while DNS still works) ──────────────
 
+    ASSET_NAME="${BINARY}-${OS}-${ARCH}"
     TMP_BIN="$(mktemp "/tmp/${BINARY}.XXXXXX")"
     TMP_SUMS="$(mktemp "/tmp/${BINARY}.sums.XXXXXX")"
-    if ! download "$URL" "$TMP_BIN"; then
+    if ! download "$URL" "$TMP_BIN" "$ASSET_NAME"; then
         error "Download failed: ${URL}"
         exit 1
     fi
-    if ! download "$SUMS_URL" "$TMP_SUMS"; then
+    if ! download "$SUMS_URL" "$TMP_SUMS" "SHA256SUMS"; then
         error "Download failed: ${SUMS_URL}"
         exit 1
     fi
 
-    ASSET_NAME="${BINARY}-${OS}-${ARCH}"
     EXPECTED_SHA256=$(awk -v asset="$ASSET_NAME" '$2==asset || $2=="*"asset {print $1; exit}' "$TMP_SUMS")
     if [ -z "$EXPECTED_SHA256" ]; then
         error "Could not find checksum for ${ASSET_NAME} in SHA256SUMS."
