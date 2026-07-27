@@ -22,6 +22,25 @@ const (
 // started proxy to answer before reporting the preflight as failed.
 const localDNSPreflightTimeout = 10 * time.Second
 
+// installPreconditions is the service state an install starts from.
+type installPreconditions struct {
+	installed bool
+	running   bool
+}
+
+// assessInstallPreconditions interprets the platform service state. An
+// unreadable state is treated as "nothing there": install proceeds, and the
+// steps that would have run are ones the following Uninstall covers anyway.
+func assessInstallPreconditions(serviceState string, err error) installPreconditions {
+	if err != nil {
+		return installPreconditions{}
+	}
+	return installPreconditions{
+		installed: serviceState != "" && serviceState != "not-installed",
+		running:   serviceState == "running",
+	}
+}
+
 // waitForLocalDNSProxy polls the local proxy until it answers or the timeout
 // elapses, returning the last probe error.
 func waitForLocalDNSProxy(timeout time.Duration) error {
@@ -45,7 +64,8 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 	}
 
 	prevDNSLocal := core.HasDNS127001(resolveSystemDNSFunc().DNS)
-	prevInstalled := serviceCurrentlyInstalled()
+	prev := assessInstallPreconditions(serviceStateFunc())
+	prevInstalled := prev.installed
 	prevState, prevStateErr := state.LoadInstallState()
 	hasPrevState := prevStateErr == nil && strings.TrimSpace(prevState.ProfileID) != ""
 
@@ -62,13 +82,19 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		return outcome, err
 	}
 
-	// Uninstall any previous version first. Stopping is skipped when nothing is
-	// installed: attempting it anyway is what printed "Warning: failed to stop
-	// service: Unit ublockdns.service not loaded" on every first-time install,
-	// which reads as a failure in an install that is going fine. DNS artifacts
-	// are still cleared, since a previously rolled-back install can leave them
-	// behind with no service registered.
-	if prevInstalled {
+	// Uninstall any previous version first. Only stop a service that is
+	// actually running: every service manager reports an error when asked to
+	// stop something that is already stopped or absent, and those errors were
+	// surfacing as warnings that read like install failures.
+	//
+	//   systemd: Unit ublockdns.service not loaded          (fresh install)
+	//   launchd: Unload failed: 5: Input/output error        (reinstall, since
+	//            install.sh stops the service before this runs)
+	//
+	// Uninstall below removes the registration either way, and DNS artifacts
+	// are always cleared, since a rolled-back install can leave them behind
+	// with no service registered.
+	if prev.running {
 		_ = stopService(svc)
 	}
 	restoreSystemDNSBestEffortFunc()

@@ -44,3 +44,36 @@ func TestWaitForLocalDNSProxyGivesUpAfterTimeout(t *testing.T) {
 		t.Fatalf("waitForLocalDNSProxy() error = %v, want %v", err, want)
 	}
 }
+
+// Every service manager errors when asked to stop something that is not
+// running, and those errors reached users as warnings that read like install
+// failures: systemd's "Unit ublockdns.service not loaded" on a fresh install,
+// launchd's "Unload failed: 5: Input/output error" on an upgrade, because
+// install.sh stops the service before handing over.
+func TestAssessInstallPreconditions(t *testing.T) {
+	tests := []struct {
+		state         string
+		err           error
+		wantInstalled bool
+		wantRunning   bool
+		why           string
+	}{
+		{state: "running", wantInstalled: true, wantRunning: true, why: "an upgrade over a live service"},
+		{state: "stopped", wantInstalled: true, wantRunning: false, why: "install.sh already stopped it"},
+		{state: "not-installed", wantInstalled: false, wantRunning: false, why: "fresh install"},
+		{state: "unknown", wantInstalled: true, wantRunning: false, why: "registered but state unreadable; do not guess it is running"},
+		{state: "running", err: errors.New("launchctl unavailable"), why: "an error means we know nothing"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.state, func(t *testing.T) {
+			got := assessInstallPreconditions(tt.state, tt.err)
+			if got.installed != tt.wantInstalled {
+				t.Errorf("installed = %v, want %v (%s)", got.installed, tt.wantInstalled, tt.why)
+			}
+			if got.running != tt.wantRunning {
+				t.Errorf("running = %v, want %v (%s)", got.running, tt.wantRunning, tt.why)
+			}
+		})
+	}
+}
