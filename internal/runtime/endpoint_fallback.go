@@ -2,14 +2,17 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
 	"github.com/nextdns/nextdns/host"
 	"github.com/nextdns/nextdns/resolver/endpoint"
+
+	"github.com/ugzv/ublockdnsclient/internal/core"
 )
 
-const dohProbeDomain = "example.com"
+const dohProbeDomain = core.ProbeDomain
 
 var fallbackDNSServers = []string{
 	"1.1.1.1:53",
@@ -82,4 +85,15 @@ func fallbackDNSEndpoints() []endpoint.Endpoint {
 	}
 
 	return out
+}
+
+func testEndpointDomain(ctx context.Context, e endpoint.Endpoint, hostname string) error {
+	queryID := uint16(0x4D21)
+	_, err := core.ExchangeDNSQuery(queryID, hostname, func(payload, buf []byte) (int, error) {
+		return e.Exchange(ctx, payload, buf)
+	})
+	if err != nil {
+		return fmt.Errorf("endpoint probe failed for %q: %w", hostname, err)
+	}
+	return nil
 }

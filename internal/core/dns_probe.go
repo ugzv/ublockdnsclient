@@ -11,7 +11,7 @@ import (
 )
 
 func CheckLocalDNSProxy(hostname string) error {
-	resp, err := queryDNSUDP("127.0.0.1:53", hostname)
+	resp, err := queryDNSUDP(LocalDNSAddr, hostname)
 	if err != nil {
 		return fmt.Errorf("dns query failed via local proxy: %w", err)
 	}
@@ -31,7 +31,7 @@ func CheckLocalDNSProxy(hostname string) error {
 }
 
 func queryDNSUDP(serverAddr, hostname string) ([]byte, error) {
-	id := uint16(rand.New(rand.NewSource(time.Now().UnixNano())).Intn(65535))
+	id := uint16(rand.Uint32())
 
 	conn, err := net.DialTimeout("udp", serverAddr, 2*time.Second)
 	if err != nil {
@@ -67,4 +67,22 @@ func buildDNSQuery(id uint16, hostname string) []byte {
 	q = append(q, 0x00)                   // end of QNAME
 	q = append(q, 0x00, 0x01, 0x00, 0x01) // QTYPE=A, QCLASS=IN
 	return q
+}
+
+func ExchangeDNSQuery(queryID uint16, hostname string, exchange func(payload, buf []byte) (int, error)) ([]byte, error) {
+	payload := buildDNSQuery(queryID, hostname)
+	buf := make([]byte, 2048)
+
+	n, err := exchange(payload, buf)
+	if err != nil {
+		return nil, err
+	}
+	resp := buf[:n]
+	if len(resp) < 2 {
+		return nil, errors.New("short DNS response")
+	}
+	if binary.BigEndian.Uint16(resp[:2]) != queryID {
+		return nil, errors.New("mismatched DNS transaction id")
+	}
+	return resp, nil
 }

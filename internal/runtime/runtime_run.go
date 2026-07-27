@@ -18,10 +18,13 @@ import (
 	"github.com/ugzv/ublockdnsclient/internal/core"
 )
 
+// dnsCacheEntries bounds the client-side DNS response cache.
+const dnsCacheEntries = 4096
+
 // Run starts the DNS proxy in the foreground.
 func Run(version, profileID, overrideServer, overrideAPIServer, accountToken string) error {
 	setupDaemonLogging()
-	listenAddr := "127.0.0.1:53"
+	listenAddr := core.LocalDNSAddr
 	cfg, err := resolveRuntimeConfig(profileID, overrideServer, overrideAPIServer, accountToken)
 	if err != nil {
 		return err
@@ -65,7 +68,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 	// Client-side DNS response cache. Avoids upstream round-trips for
 	// frequently queried domains. Purged on rule updates via SSE so that
 	// blocklist changes take effect immediately.
-	dnsCache, err := lru.NewARC(4096)
+	dnsCache, err := lru.NewARC(dnsCacheEntries)
 	if err != nil {
 		return fmt.Errorf("create DNS cache: %w", err)
 	}

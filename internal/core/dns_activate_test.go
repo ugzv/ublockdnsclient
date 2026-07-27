@@ -17,8 +17,8 @@ func TestActivateSystemDNSUsesLocalAddress(t *testing.T) {
 		return nil
 	}, nil)
 
-	if err := ActivateSystemDNS(); err != nil {
-		t.Fatalf("ActivateSystemDNS() error = %v", err)
+	if err := activateSystemDNS(); err != nil {
+		t.Fatalf("activateSystemDNS() error = %v", err)
 	}
 	if got != LocalDNSAddress {
 		t.Fatalf("set DNS address = %q, want %q", got, LocalDNSAddress)
@@ -29,8 +29,8 @@ func TestActivateSystemDNSPropagatesError(t *testing.T) {
 	want := errors.New("set dns failed")
 	installTestDNSHooks(t, func(string) error { return want }, nil)
 
-	if err := ActivateSystemDNS(); !errors.Is(err, want) {
-		t.Fatalf("ActivateSystemDNS() error = %v, want %v", err, want)
+	if err := activateSystemDNS(); !errors.Is(err, want) {
+		t.Fatalf("activateSystemDNS() error = %v, want %v", err, want)
 	}
 }
 

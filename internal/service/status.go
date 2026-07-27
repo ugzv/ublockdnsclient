@@ -25,7 +25,7 @@ type StatusInfo struct {
 	Warnings    []string `json:"warnings,omitempty"`
 }
 
-const readinessProbeHost = "example.com"
+const readinessProbeHost = core.ProbeDomain
 
 var (
 	currentStatusFunc = CurrentStatus

@@ -3,7 +3,7 @@
 package core
 
 func activatePlatformSystemDNS() error {
-	return ActivateSystemDNS()
+	return activateSystemDNS()
 }
 
 func ConfigureLinuxSystemDNS() error {

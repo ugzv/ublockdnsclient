@@ -8,8 +8,6 @@ import (
 	"github.com/nextdns/nextdns/host"
 )
 
-const LocalDNSAddress = "127.0.0.1"
-
 var (
 	setSystemDNSFunc                    = host.SetDNS
 	resetSystemDNSFunc                  = host.ResetDNS
@@ -17,9 +15,9 @@ var (
 	restorePlatformInstallArtifactsFunc = restorePlatformInstallArtifacts
 )
 
-// ActivateSystemDNS points the host resolver at the local uBlockDNS proxy via nextdns.
-// Non-Linux platforms use this through ActivatePlatformSystemDNS.
-func ActivateSystemDNS() error {
+// activateSystemDNS points the host resolver at the local uBlockDNS proxy via
+// nextdns. Non-Linux platforms reach it through ActivatePlatformSystemDNS.
+func activateSystemDNS() error {
 	return setSystemDNSFunc(LocalDNSAddress)
 }
 
@@ -36,28 +34,24 @@ func ActivatePlatformSystemDNSBestEffort() {
 	}
 }
 
-// RestoreSystemDNS restores DNS for durable, legacy nextdns-only, and mixed installs.
-func RestoreSystemDNS(strict bool) ([]string, error) {
-	return restoreSystemDNS(strict)
-}
-
 // RestoreSystemDNSStrict fails when any restore step fails.
 func RestoreSystemDNSStrict() error {
-	_, err := RestoreSystemDNS(true)
+	_, err := restoreSystemDNS(true)
 	return err
 }
 
 // RestoreSystemDNSBestEffort logs and continues when restore fails.
 func RestoreSystemDNSBestEffort() {
-	_, _ = RestoreSystemDNS(false)
+	_, _ = restoreSystemDNS(false)
 }
 
 // RestoreSystemDNSWithWarnings restores DNS best-effort and returns human-readable issues.
 func RestoreSystemDNSWithWarnings() []string {
-	warnings, _ := RestoreSystemDNS(false)
+	warnings, _ := restoreSystemDNS(false)
 	return warnings
 }
 
+// restoreSystemDNS restores DNS for durable, legacy nextdns-only, and mixed installs.
 func restoreSystemDNS(strict bool) ([]string, error) {
 	var warnings []string
 	var errs []error
@@ -113,4 +107,13 @@ func SwapPlatformSystemDNSFuncs(activate func() error, restoreArtifacts func() e
 		activatePlatformSystemDNSFunc = oldActivate
 		restorePlatformInstallArtifactsFunc = oldRestoreArtifacts
 	}
+}
+
+func HasDNS127001(dns []string) bool {
+	for _, d := range dns {
+		if d == LocalDNSAddress {
+			return true
+		}
+	}
+	return false
 }
