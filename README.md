@@ -66,6 +66,8 @@ A Windows GUI installer (.exe) is also available on the [releases page](https://
 
 The service updates itself daily; releases are verified against the uBlockDNS signing key before being applied. Set `UBLOCKDNS_NO_AUTOUPDATE=1` in the service environment to opt out, or update manually with `sudo ublockdns upgrade`.
 
+Automatic updates apply on macOS, Windows, and Linux. On FreeBSD, `rc.d` does not restart a service that exits, so the client does not update itself there; use `sudo ublockdns upgrade`. The client logs which mode it is in at startup.
+
 Older versions without the `upgrade` command: re-run the install command once and automatic updates take over.
 
 ### Uninstalling
