@@ -5,8 +5,9 @@ const (
 	DefaultDoHServer = "https://my.ublockdns.com"
 	DefaultAPIServer = "https://ublockdns.com"
 
-	LocalDNSIP   = "127.0.0.1"
-	LocalDNSAddr = LocalDNSIP + ":53"
+	LocalDNSIP     = "127.0.0.1"
+	LocalDNSAddr   = LocalDNSIP + ":53"
+	LocalDNSAddrV6 = "[::1]:53"
 
 	// ProbeDomain is resolved to check that a DNS path answers at all. It is
 	// IANA-reserved, so no filter list blocks it and no provider branding leaks

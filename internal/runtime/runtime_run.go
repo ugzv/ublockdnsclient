@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -21,10 +23,21 @@ import (
 // dnsCacheEntries bounds the client-side DNS response cache.
 const dnsCacheEntries = 4096
 
+// localListenAddrs binds IPv4 loopback and, when the stack has it, IPv6
+// loopback too: Windows resolvers are pointed at ::1 alongside 127.0.0.1.
+func localListenAddrs() []string {
+	addrs := []string{core.LocalDNSAddr}
+	if l, err := net.Listen("tcp", "[::1]:0"); err == nil {
+		_ = l.Close()
+		addrs = append(addrs, core.LocalDNSAddrV6)
+	}
+	return addrs
+}
+
 // Run starts the DNS proxy in the foreground.
 func Run(version, profileID, overrideServer, overrideAPIServer, accountToken string) error {
 	setupDaemonLogging()
-	listenAddr := core.LocalDNSAddr
+	listenAddrs := localListenAddrs()
 	cfg, err := resolveRuntimeConfig(profileID, overrideServer, overrideAPIServer, accountToken)
 	if err != nil {
 		return err
@@ -46,7 +59,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 	} else {
 		bootstrapIPs = ips
 	}
-	log.Printf("Listening on: %s", listenAddr)
+	log.Printf("Listening on: %s", strings.Join(listenAddrs, ", "))
 
 	// Build the DoH endpoint with bootstrap IPs so it can connect
 	// without relying on system DNS.
@@ -79,7 +92,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 		os.Getenv("UBLOCKDNS_QUERY_LOG") == "1"
 
 	p := proxy.Proxy{
-		Addrs: []string{listenAddr},
+		Addrs: listenAddrs,
 		Upstream: retryResolver{inner: &resolver.DNS{
 			DOH: resolver.DOH{
 				URL:   dohURL,
