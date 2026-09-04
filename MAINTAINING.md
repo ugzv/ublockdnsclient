@@ -52,3 +52,13 @@
 - Windows token path: `%ProgramData%\\ublockdns`.
 - Unix token path: `/etc/ublockdns`.
 - Release builds are managed by GoReleaser (`.goreleaser.yml`).
+
+## Windows Installer Helpers
+
+Edit shared PowerShell helpers in `scripts/windows/common.ps1`, then run
+`./scripts/windows/sync-helpers.ps1` to update the standalone installers.
+The generated blocks keep downloaded scripts self-contained; do not edit them directly.
+
+Run `./scripts/windows/sync-helpers.ps1 -Check` and
+`./scripts/windows/test-installers.ps1` before submitting installer changes.
+CI runs both with Windows PowerShell 5.1, including token-file ACL checks.

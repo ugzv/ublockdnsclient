@@ -14,6 +14,7 @@ $commonPath = Join-Path $PSScriptRoot "scripts/windows/common.ps1"
 if (Test-Path $commonPath) {
     . $commonPath
 } else {
+    # BEGIN GENERATED HELPERS
     function Test-Admin {
         $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
         $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
@@ -21,9 +22,9 @@ if (Test-Path $commonPath) {
     }
 
     function Assert-SupportedWindowsVersion {
-        $versionInfo = [System.Environment]::OSVersion.Version
-        if ($versionInfo.Major -lt 10) {
-            throw "Windows 10 or later is required. Current version detected: $($versionInfo.ToString()). The published uBlockDNS binaries are built with a Go toolchain that no longer supports Windows 7/8/8.1."
+        $version = [System.Environment]::OSVersion.Version
+        if ($version.Major -lt 10) {
+            throw "Windows 10 or later is required. Current version detected: $($version.ToString()). The published uBlockDNS binaries are built with a Go toolchain that no longer supports Windows 7/8/8.1."
         }
     }
 
@@ -39,7 +40,10 @@ if (Test-Path $commonPath) {
 
     function Invoke-DownloadFile {
         param(
+            [Parameter(Mandatory = $true)]
             [string]$Uri,
+
+            [Parameter(Mandatory = $true)]
             [string]$OutFile
         )
 
@@ -55,7 +59,10 @@ if (Test-Path $commonPath) {
     }
 
     function Get-Sha256Hex {
-        param([string]$Path)
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Path
+        )
 
         $stream = [System.IO.File]::OpenRead($Path)
         try {
@@ -73,7 +80,10 @@ if (Test-Path $commonPath) {
     }
 
     function Resolve-GitHubLatestTag {
-        param([string]$Repo)
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$Repo
+        )
 
         Enable-Tls12
 
@@ -93,6 +103,7 @@ if (Test-Path $commonPath) {
             $response.Close()
         }
     }
+    # END GENERATED HELPERS
 }
 
 if (-not (Test-Admin)) {
@@ -252,16 +263,14 @@ if (-not $replaced) {
 $installArgs = @("install", "-profile", $ProfileId)
 
 Write-Host "Configuring service ..."
+$previousAccountToken = $env:UBLOCKDNS_ACCOUNT_TOKEN
 try {
-    # Passed through the environment rather than argv: command lines are
-    # readable by other processes on the machine, environment blocks are not.
-    # The script already runs elevated, so the child inherits it directly.
     if ($AccountToken) {
         $env:UBLOCKDNS_ACCOUNT_TOKEN = $AccountToken
     }
     & $exePath @installArgs
 } finally {
-    Remove-Item Env:\UBLOCKDNS_ACCOUNT_TOKEN -ErrorAction SilentlyContinue
+    $env:UBLOCKDNS_ACCOUNT_TOKEN = $previousAccountToken
 }
 if ($LASTEXITCODE -ne 0) {
     throw "Service installation failed with exit code $LASTEXITCODE."
