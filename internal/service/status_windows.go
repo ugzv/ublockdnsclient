@@ -46,7 +46,7 @@ func dnsFromWindowsPowerShell() ([]string, error) {
 		"-NoProfile",
 		"-NonInteractive",
 		"-Command",
-		`Get-DnsClientServerAddress -AddressFamily IPv4 | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ }`,
+		`Get-DnsClientServerAddress | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ }`,
 	)
 	if err != nil {
 		return nil, err

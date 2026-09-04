@@ -10,8 +10,20 @@ import (
 	"time"
 )
 
-func CheckLocalDNSProxy(hostname string) error {
-	resp, err := queryDNSUDP(LocalDNSAddr, hostname)
+func CheckLocalDNSProxy(hostname string, servers ...string) error {
+	if len(servers) == 0 {
+		servers = []string{LocalDNSAddr}
+	}
+	for _, server := range servers {
+		if err := checkDNSProxy(server, hostname); err != nil {
+			return fmt.Errorf("%s: %w", server, err)
+		}
+	}
+	return nil
+}
+
+func checkDNSProxy(server, hostname string) error {
+	resp, err := queryDNSUDP(server, hostname)
 	if err != nil {
 		return fmt.Errorf("dns query failed via local proxy: %w", err)
 	}

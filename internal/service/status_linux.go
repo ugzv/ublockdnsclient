@@ -27,7 +27,7 @@ func resolveSystemDNS() systemDNSAssessment {
 		return assessment
 	}
 
-	if assessment.LocalDNS && len(hostDNS) > 0 && !core.HasDNS127001(hostDNS) {
+	if assessment.LocalDNS && len(hostDNS) > 0 && !core.HasLocalDNS(hostDNS) {
 		assessment.Warnings = append(assessment.Warnings,
 			fmtResolverDisagreement("active resolver appears local, but NetworkManager/lease metadata still reports upstream DNS", hostDNS))
 	}
@@ -51,9 +51,9 @@ func appendSourceWarnings(warnings []string, resolvectlErr, resolvConfErr error)
 
 func pickLinuxPrimaryDNS(resolvedDNS, resolvConfDNS, hostDNS []string) []string {
 	switch {
-	case core.HasDNS127001(resolvedDNS):
+	case core.HasLocalDNS(resolvedDNS):
 		return resolvedDNS
-	case core.HasDNS127001(resolvConfDNS):
+	case core.HasLocalDNS(resolvConfDNS):
 		return resolvConfDNS
 	case len(resolvedDNS) > 0:
 		return resolvedDNS

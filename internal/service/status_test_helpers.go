@@ -11,7 +11,7 @@ import (
 type statusTestEnv struct {
 	serviceState          func() (string, error)
 	resolveSystemDNS      func() systemDNSAssessment
-	localDNSProbe         func() error
+	localDNSProbe         func(...string) error
 	loadInstallState      func() (state.InstallState, error)
 	hostDNS               func() []string
 	commandOutput         func(name string, args ...string) ([]byte, error)

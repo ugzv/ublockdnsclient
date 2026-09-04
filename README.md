@@ -115,7 +115,7 @@ Manage your filter lists, custom rules, and query log from the [dashboard](https
 
 ## How it works
 
-The client runs a local DNS proxy on `127.0.0.1:53` and forwards all queries to the uBlockDNS service over encrypted DNS-over-HTTPS. The service evaluates each query against the filter lists and custom rules enabled for your profile, then returns either the normal DNS answer or a block response.
+The client runs a local DNS proxy on `127.0.0.1:53` and, when IPv6 is available, `[::1]:53`. It forwards all queries to the uBlockDNS service over encrypted DNS-over-HTTPS. The service evaluates each query against the filter lists and custom rules enabled for your profile, then returns either the normal DNS answer or a block response.
 
 When you update filter lists or custom rules in the dashboard, the client receives those changes in real time and flushes the local DNS cache automatically so new decisions take effect quickly.
 

@@ -5,13 +5,16 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/nextdns/nextdns/host/service"
+	"github.com/ugzv/ublockdnsclient/internal/state"
 )
 
 func TestWaitForLocalDNSProxyRetriesUntilProxyBinds(t *testing.T) {
 	var probes atomic.Int32
 	now := time.Now()
 	withStatusTestEnv(t, statusTestEnv{
-		localDNSProbe: func() error {
+		localDNSProbe: func(...string) error {
 			// The proxy binds asynchronously; the first probes hit a closed port.
 			if probes.Add(1) < 4 {
 				return errors.New("connection refused")
@@ -34,7 +37,7 @@ func TestWaitForLocalDNSProxyGivesUpAfterTimeout(t *testing.T) {
 	want := errors.New("connection refused")
 	now := time.Now()
 	withStatusTestEnv(t, statusTestEnv{
-		localDNSProbe: func() error { return want },
+		localDNSProbe: func(...string) error { return want },
 		now:           func() time.Time { return now },
 		sleep:         func(d time.Duration) { now = now.Add(d) },
 	})
@@ -73,6 +76,66 @@ func TestAssessInstallPreconditions(t *testing.T) {
 			}
 			if got.running != tt.wantRunning {
 				t.Errorf("running = %v, want %v (%s)", got.running, tt.wantRunning, tt.why)
+			}
+		})
+	}
+}
+
+type rollbackService struct {
+	fakeService
+	installErr error
+	starts     int
+}
+
+func (s *rollbackService) Install() error { return s.installErr }
+func (s *rollbackService) Start() error   { s.starts++; return s.startErr }
+
+func TestRollbackRestoresOnlyAWorkingPreviousService(t *testing.T) {
+	for _, tt := range []struct {
+		name                           string
+		running, known                 bool
+		installErr, startErr, probeErr error
+		wantStarts                     int
+		wantLocal                      bool
+	}{
+		{name: "previously stopped", known: true},
+		{name: "missing saved configuration", running: true},
+		{name: "reinstall failed", running: true, known: true, installErr: errors.New("install failed")},
+		{name: "restart failed", running: true, known: true, startErr: errors.New("start failed"), wantStarts: 1},
+		{name: "proxy never answered", running: true, known: true, probeErr: errors.New("no listener"), wantStarts: 1},
+		{name: "recovered", running: true, known: true, wantStarts: 1, wantLocal: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			previous := &rollbackService{fakeService: fakeService{startErr: tt.startErr}, installErr: tt.installErr}
+			oldFactory, oldRestore := newHostService, restoreSystemDNSStrictFunc
+			t.Cleanup(func() { newHostService = oldFactory; restoreSystemDNSStrictFunc = oldRestore })
+			newHostService = func(config service.Config) (service.Service, error) { return previous, nil }
+			restores, activations := 0, 0
+			restoreSystemDNSStrictFunc = func() error { restores++; return nil }
+			withControlTestEnv(t, controlTestEnv{
+				baseService:                func() (service.Service, error) { return fakeService{}, nil },
+				restoreSystemDNSBestEffort: func() {},
+				activatePlatformSystemDNS:  func() error { activations++; return nil },
+			})
+			now := time.Now()
+			withStatusTestEnv(t, statusTestEnv{
+				localDNSProbe: func(...string) error { return tt.probeErr },
+				now:           func() time.Time { return now },
+				sleep:         func(d time.Duration) { now = now.Add(d) },
+			})
+			err := rollbackInstall(installPreconditions{installed: true, running: tt.running}, []string{"127.0.0.1:53", "[::1]:53"}, tt.known, state.InstallState{ProfileID: "previous"})
+			wantErr := !tt.known || tt.installErr != nil || tt.startErr != nil || tt.probeErr != nil
+			if (err != nil) != wantErr {
+				t.Errorf("rollback error = %v, want error %v", err, wantErr)
+			}
+			if previous.starts != tt.wantStarts {
+				t.Errorf("starts = %d, want %d", previous.starts, tt.wantStarts)
+			}
+			if (activations > 0) != tt.wantLocal {
+				t.Errorf("DNS activations = %d, want local %v", activations, tt.wantLocal)
+			}
+			if !tt.wantLocal && restores == 0 {
+				t.Error("failed recovery did not restore upstream DNS")
 			}
 		})
 	}

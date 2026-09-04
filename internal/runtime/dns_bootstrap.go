@@ -45,7 +45,7 @@ func resolveBootstrapIPs(hostname string) ([]string, error) {
 
 	// Fallback for locked-down networks that block direct DNS to public resolvers.
 	// Only use system DNS if it's not already pointed to this local proxy.
-	if len(out) == 0 && !core.HasDNS127001(host.DNS()) {
+	if len(out) == 0 && !core.HasLocalDNS(host.DNS()) {
 		addrs, err := lookupHostSystem(hostname)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("system resolver: %v", err))

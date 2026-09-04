@@ -15,6 +15,7 @@ import (
 )
 
 var (
+	newHostService                   = host.NewService
 	activatePlatformSystemDNSFunc    = core.ActivatePlatformSystemDNS
 	restoreSystemDNSStrictFunc       = core.RestoreSystemDNSStrict
 	restoreSystemDNSBestEffortFunc   = core.RestoreSystemDNSBestEffort
@@ -103,7 +104,7 @@ func newService(profileID, dohServer, apiServer string) (service.Service, error)
 		args = append(args, "-api-server", apiServer)
 	}
 
-	return host.NewService(service.Config{
+	return newHostService(service.Config{
 		Name:        core.ServiceName,
 		DisplayName: "uBlockDNS",
 		Description: "DNS-level ad blocker - routes DNS through ublockdns.com",
