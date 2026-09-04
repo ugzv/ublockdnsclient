@@ -8,10 +8,21 @@ import (
 func TestDiffInterfaces(t *testing.T) {
 	tests := []struct {
 		name string
-		old  []net.Interface
-		new  []net.Interface
+		old  []interfaceState
+		new  []interfaceState
 		want string
 	}{
+		{
+			name: "address changed with same interface",
+			old:  []interfaceState{{Name: "eth0", Flags: net.FlagUp, Addrs: []net.Addr{strAddr("192.0.2.1/24")}}},
+			new:  []interfaceState{{Name: "eth0", Flags: net.FlagUp, Addrs: []net.Addr{strAddr("192.0.2.2/24")}}},
+			want: "eth0 192.0.2.1/24 removed",
+		},
+		{
+			name: "address order unchanged",
+			old:  []interfaceState{{Name: "eth0", Addrs: []net.Addr{strAddr("192.0.2.1/24"), strAddr("2001:db8::1/64")}}},
+			new:  []interfaceState{{Name: "eth0", Addrs: []net.Addr{strAddr("2001:db8::1/64"), strAddr("192.0.2.1/24")}}},
+		},
 		{
 			name: "empty",
 			old:  nil,
@@ -20,18 +31,18 @@ func TestDiffInterfaces(t *testing.T) {
 		},
 		{
 			name: "new interface",
-			old:  []net.Interface{},
-			new: []net.Interface{
+			old:  []interfaceState{},
+			new: []interfaceState{
 				{Name: "eth0"},
 			},
 			want: "eth0 added",
 		},
 		{
 			name: "new interface inserted",
-			old: []net.Interface{
+			old: []interfaceState{
 				{Name: "lo"},
 			},
-			new: []net.Interface{
+			new: []interfaceState{
 				{Name: "lo"},
 				{Name: "eth0"},
 			},
@@ -39,39 +50,39 @@ func TestDiffInterfaces(t *testing.T) {
 		},
 		{
 			name: "interface removed",
-			old: []net.Interface{
+			old: []interfaceState{
 				{Name: "eth0"},
 			},
-			new:  []net.Interface{},
+			new:  []interfaceState{},
 			want: "eth0 removed",
 		},
 		{
 			name: "interface removed head",
-			old: []net.Interface{
+			old: []interfaceState{
 				{Name: "eth0"},
 				{Name: "lo"},
 			},
-			new: []net.Interface{
+			new: []interfaceState{
 				{Name: "lo"},
 			},
 			want: "eth0 removed",
 		},
 		{
 			name: "interface up",
-			old: []net.Interface{
+			old: []interfaceState{
 				{Name: "eth0"},
 			},
-			new: []net.Interface{
+			new: []interfaceState{
 				{Name: "eth0", Flags: net.FlagUp},
 			},
 			want: "eth0 up",
 		},
 		{
 			name: "interface down",
-			old: []net.Interface{
+			old: []interfaceState{
 				{Name: "eth0", Flags: net.FlagUp},
 			},
-			new: []net.Interface{
+			new: []interfaceState{
 				{Name: "eth0"},
 			},
 			want: "eth0 down",
