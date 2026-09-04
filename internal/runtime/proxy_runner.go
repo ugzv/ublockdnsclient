@@ -2,39 +2,58 @@ package runtime
 
 import (
 	"context"
-	"errors"
 	"log"
+	"sync"
 	"time"
-
-	"github.com/nextdns/nextdns/proxy"
 )
 
 type proxyRunner struct {
-	proxy   proxy.Proxy
+	proxy   interface{ ListenAndServe(context.Context) error }
 	onInit  []func(ctx context.Context)
 	onReady []func(ctx context.Context)
 	cancel  context.CancelFunc
 	stopped chan struct{}
+	err     error
 }
 
 func (p *proxyRunner) Start() error {
-	errC := make(chan error, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
 	p.stopped = make(chan struct{})
+	p.err = nil
 
 	for _, f := range p.onInit {
 		go f(ctx)
 	}
 
+	// Ready hooks own system DNS and must finish restoring it before Stop
+	// returns. Init hooks are cancelled but not joined: an update download
+	// does not currently support context cancellation.
+	ready := make(chan struct{})
+	var hooks sync.WaitGroup
+	for _, f := range p.onReady {
+		hooks.Add(1)
+		go func() {
+			defer hooks.Done()
+			select {
+			case <-ctx.Done():
+				return
+			case <-ready:
+				if ctx.Err() == nil {
+					f(ctx)
+				}
+			}
+		}()
+	}
+
 	go func() {
 		defer close(p.stopped)
-		if err := p.proxy.ListenAndServe(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			select {
-			case errC <- err:
-			default:
-			}
+		if err := p.proxy.ListenAndServe(ctx); err != nil && ctx.Err() == nil {
+			p.err = err
+			log.Printf("DNS proxy stopped: %v", err)
 		}
+		cancel()
+		hooks.Wait()
 	}()
 
 	// Match NextDNS service startup behavior: return quickly after spawn,
@@ -42,14 +61,10 @@ func (p *proxyRunner) Start() error {
 	// best-effort readiness heuristic, not a confirmed bind — onReady hooks
 	// (e.g. system DNS activation) must tolerate the proxy stopping shortly after.
 	select {
-	case err := <-errC:
-		cancel()
-		<-p.stopped
-		return err
+	case <-p.stopped:
+		return p.err
 	case <-time.After(5 * time.Second):
-		for _, f := range p.onReady {
-			go f(ctx)
-		}
+		close(ready)
 		return nil
 	}
 }
@@ -59,11 +74,10 @@ func (p *proxyRunner) Stop() error {
 		return nil
 	}
 	p.cancel()
-	p.cancel = nil
 	if p.stopped != nil {
 		<-p.stopped
 	}
-	return nil
+	return p.err
 }
 
 func (p *proxyRunner) Log(msg string) {
