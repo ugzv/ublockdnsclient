@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -45,6 +44,8 @@ type rulesUpdateEvent struct {
 }
 
 func fetchRulesVersion(ctx context.Context, apiServer, profileID, accountToken string) (rulesVersionResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	var out rulesVersionResponse
 	resp, err := doRulesGET(ctx, apiServer, profileID, accountToken, "/rules/version", "application/json")
 	if err != nil {
@@ -76,9 +77,8 @@ func doRulesGET(ctx context.Context, apiServer, profileID, accountToken, suffix,
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		endpoint := strings.TrimPrefix(suffix, "/")
-		return nil, fmt.Errorf("%s status %d: %s", endpoint, resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, fmt.Errorf("%s status %d", endpoint, resp.StatusCode)
 	}
 	return resp, nil
 }
