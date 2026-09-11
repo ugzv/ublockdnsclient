@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -30,14 +31,14 @@ func TestLiveResolverServesAndPurges(t *testing.T) {
 	}
 
 	hostname, path := splitDoHBase(base)
-	ips, err := resolveBootstrapIPs(hostname)
+	ips, err := resolveBootstrapIPs(context.Background(), hostname)
 	if err != nil {
 		t.Fatalf("bootstrap resolution failed: %v", err)
 	}
 	t.Logf("bootstrap IPs for %s: %v", hostname, ips)
 
 	ep := &endpoint.DOHEndpoint{Hostname: hostname, Path: path, Bootstrap: ips}
-	mgr := newEndpointManager(endpoint.StaticProvider([]endpoint.Endpoint{ep}), ep)
+	mgr := newEndpointManager(ep, endpoint.StaticProvider([]endpoint.Endpoint{ep}), newFallbackDNSProvider(runtime.GOOS, discoverDNSServers))
 
 	cache, err := lru.NewARC(dnsCacheEntries)
 	if err != nil {
@@ -45,9 +46,9 @@ func TestLiveResolverServesAndPurges(t *testing.T) {
 	}
 
 	// Wired exactly as the proxy wires it.
-	res := retryResolver{inner: &resolver.DNS{
+	res := retryResolver{recover: mgr.Test, inner: &resolver.DNS{
 		DOH:     resolver.DOH{URL: base, Cache: cache},
-		Manager: mgr,
+		Manager: mgr.queries,
 	}}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

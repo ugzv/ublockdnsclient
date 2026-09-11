@@ -20,19 +20,16 @@ func (e *recordingEndpoint) Equal(other endpoint.Endpoint) bool { return e == ot
 func (e *recordingEndpoint) Exchange(_ context.Context, payload, buf []byte) (int, error) {
 	e.lastQuery = append([]byte(nil), payload...)
 	copy(buf, payload)
+	buf[2] |= 0x80
 	return len(payload), nil
 }
 
 func TestEndpointTesterOverridesProbeDomain(t *testing.T) {
 	e := &recordingEndpoint{}
-	mgr := newEndpointManager(endpoint.StaticProvider([]endpoint.Endpoint{e}), e)
+	mgr := newEndpointManager(e, endpoint.StaticProvider([]endpoint.Endpoint{e}))
 
-	tester := mgr.EndpointTester(e)
-	if tester == nil {
-		t.Fatal("expected DoH endpoint tester")
-	}
-	if err := tester(context.Background(), "probe-test.dns.nextdns.io."); err != nil {
-		t.Fatalf("tester returned error: %v", err)
+	if err := mgr.Test(context.Background()); err != nil {
+		t.Fatalf("endpoint test returned error: %v", err)
 	}
 	if len(e.lastQuery) == 0 {
 		t.Fatal("expected query to be recorded")

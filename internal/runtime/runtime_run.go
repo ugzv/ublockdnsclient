@@ -6,9 +6,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/nextdns/nextdns/host/service"
@@ -54,7 +54,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 	log.Printf("API server: %s", cfg.APIServer)
 
 	var bootstrapIPs []string
-	if ips, err := resolveBootstrapIPs(dohHostname); err != nil {
+	if ips, err := resolveBootstrapIPs(context.Background(), dohHostname); err != nil {
 		log.Printf("Warning: bootstrap resolution failed: %v", err)
 	} else {
 		bootstrapIPs = ips
@@ -74,9 +74,9 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 	var dohEp atomic.Pointer[endpoint.DOHEndpoint]
 	dohEp.Store(dohEndpoint)
 
-	mgr := newEndpointManager(endpoint.ProviderFunc(func(context.Context) ([]endpoint.Endpoint, error) {
+	mgr := newEndpointManager(dohEndpoint, endpoint.ProviderFunc(func(context.Context) ([]endpoint.Endpoint, error) {
 		return []endpoint.Endpoint{dohEp.Load()}, nil
-	}), dohEndpoint)
+	}), newFallbackDNSProvider(runtime.GOOS, discoverDNSServers))
 
 	// Client-side DNS response cache. Avoids upstream round-trips for
 	// frequently queried domains. Purged on rule updates via SSE so that
@@ -93,7 +93,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 
 	p := proxy.Proxy{
 		Addrs: listenAddrs,
-		Upstream: retryResolver{inner: &resolver.DNS{
+		Upstream: retryResolver{recover: mgr.Test, inner: &resolver.DNS{
 			DOH: resolver.DOH{
 				URL:   dohURL,
 				Cache: dnsCache,
@@ -101,7 +101,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 					return dohURL, cfg.ProfileID
 				},
 			},
-			Manager: mgr,
+			Manager: mgr.queries,
 		}},
 		QueryLog: func(qi proxy.QueryInfo) {
 			switch {
@@ -113,7 +113,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 				log.Printf("%-5s %s %s", qi.Protocol, qi.UpstreamTransport, qi.Name)
 			}
 		},
-		Timeout:             5 * time.Second,
+		Timeout:             queryTimeout,
 		MaxInflightRequests: 256,
 		InfoLog:             func(msg string) { log.Println(msg) },
 		ErrorLog:            func(err error) { log.Printf("ERROR: %v", err) },
@@ -130,6 +130,7 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 		refresher.refresh(ctx)
 	}
 	onReady = append(onReady, func(ctx context.Context) { manageSystemDNS(ctx, onNetworkChange) })
+	onReady = append(onReady, mgr.watch)
 
 	if service.CurrentRunMode() == service.RunModeService {
 		onInit = append(onInit, func(ctx context.Context) {
