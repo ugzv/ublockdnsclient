@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -23,14 +24,14 @@ func TestLiveDoHChain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ips, err := resolveBootstrapIPs(hostname)
+	ips, err := resolveBootstrapIPs(context.Background(), hostname)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("bootstrap IPs for %s: %v", hostname, ips)
 
 	ep := &endpoint.DOHEndpoint{Hostname: hostname, Path: path, Bootstrap: ips}
-	mgr := newEndpointManager(endpoint.StaticProvider([]endpoint.Endpoint{ep}), ep)
+	mgr := newEndpointManager(ep, endpoint.StaticProvider([]endpoint.Endpoint{ep}), newFallbackDNSProvider(runtime.GOOS, discoverDNSServers))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
