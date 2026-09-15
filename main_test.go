@@ -332,3 +332,67 @@ func TestResolveTokenArgMissingFile(t *testing.T) {
 		t.Fatal("resolveTokenArg() returned no error for a missing token file")
 	}
 }
+
+// The installed service invokes the binary with the argument vector built by
+// service.newService, e.g. "ublockdns run -profile <id>". If parsing of that
+// vector ever regresses, every daemon fails to start after an auto-update and
+// users lose DNS entirely, so it is pinned here.
+func TestParsesInstalledServiceArguments(t *testing.T) {
+	origArgs := os.Args
+	t.Cleanup(func() { os.Args = origArgs })
+
+	const exe = "/usr/local/bin/ublockdns"
+
+	tests := []struct {
+		name      string
+		args      []string
+		profileID string
+		dohServer string
+		apiServer string
+	}{
+		{
+			name:      "profile only, as installed by the default flow",
+			args:      []string{exe, "run", "-profile", "sp5a1t42"},
+			profileID: "sp5a1t42",
+		},
+		{
+			name:      "profile and DoH server override",
+			args:      []string{exe, "run", "-profile", "abc123", "-server", "https://my.ublockdns.com"},
+			profileID: "abc123",
+			dohServer: "https://my.ublockdns.com",
+		},
+		{
+			name:      "every override the service factory can emit",
+			args:      []string{exe, "run", "-profile", "abc123", "-server", "https://my.ublockdns.com", "-api-server", "https://ublockdns.com"},
+			profileID: "abc123",
+			dohServer: "https://my.ublockdns.com",
+			apiServer: "https://ublockdns.com",
+		},
+		{
+			name:      "profile id supplied as a dashboard URL",
+			args:      []string{exe, "install", "-profile", "https://ublockdns.com/p/abc123"},
+			profileID: "abc123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			os.Args = tt.args
+			t.Setenv("UBLOCKDNS_ACCOUNT_TOKEN", "")
+
+			got, err := parseProfileArgs()
+			if err != nil {
+				t.Fatalf("parseProfileArgs() error = %v; the daemon would fail to start", err)
+			}
+			if got.profileID != tt.profileID {
+				t.Errorf("profileID = %q, want %q", got.profileID, tt.profileID)
+			}
+			if got.dohServer != tt.dohServer {
+				t.Errorf("dohServer = %q, want %q", got.dohServer, tt.dohServer)
+			}
+			if got.apiServer != tt.apiServer {
+				t.Errorf("apiServer = %q, want %q", got.apiServer, tt.apiServer)
+			}
+		})
+	}
+}

@@ -221,3 +221,56 @@ func TestLatestVersionFallsBackToGitHub(t *testing.T) {
 		t.Fatalf("got %q, %v; want 1.2.3", v, err)
 	}
 }
+
+func TestIsNewerOrdering(t *testing.T) {
+	tests := []struct {
+		current string
+		latest  string
+		want    bool
+		why     string
+	}{
+		{"0.2.1", "0.3.0", true, "ordinary upgrade"},
+		{"0.3.0", "0.2.1", false, "never downgrade"},
+		{"0.3.0", "0.3.0", false, "already current"},
+		{"0.9.9", "0.10.0", true, "minor compares numerically, not lexically"},
+
+		// A release candidate must converge on its final release, otherwise a
+		// machine used for release testing silently stops updating.
+		{"0.3.0-rc.1", "0.3.0", true, "rc upgrades to its final release"},
+		{"0.3.0-rc.1", "0.3.0-rc.2", true, "later rc"},
+		{"0.3.0-rc.2", "0.3.0-rc.1", false, "earlier rc is not newer"},
+		{"0.3.0", "0.3.0-rc.1", false, "release never goes back to its rc"},
+		{"0.3.0-rc.1", "0.4.0", true, "rc upgrades across a later release"},
+		{"0.2.1", "0.3.0-rc.1", true, "prerelease is still ahead of an older release"},
+		{"0.3.0-rc.9", "0.3.0-rc.10", true, "numeric identifiers compare numerically"},
+		{"0.3.0-alpha", "0.3.0-beta", true, "alphanumeric identifiers compare lexically"},
+		{"0.3.0-rc", "0.3.0-rc.1", true, "fewer identifiers precede more"},
+
+		// Development builds must never auto-update.
+		{"dev", "0.3.0", false, "dev build stays put"},
+		{"0.3.0", "dev", false, "garbage from upstream is ignored"},
+		{"0.3.0", "", false, "empty version is ignored"},
+	}
+
+	for _, tt := range tests {
+		if got := IsNewer(tt.current, tt.latest); got != tt.want {
+			t.Errorf("IsNewer(%q, %q) = %v, want %v (%s)", tt.current, tt.latest, got, tt.want, tt.why)
+		}
+	}
+}
+
+func TestValidVersionAcceptsPrereleases(t *testing.T) {
+	valid := []string{"0.3.0", "v0.3.0", "0.3.0-rc.1", "v0.3.0-rc.1", "1.0.0-alpha.1", "0.3.0+build.5"}
+	for _, v := range valid {
+		if !ValidVersion(v) {
+			t.Errorf("ValidVersion(%q) = false, want true", v)
+		}
+	}
+
+	invalid := []string{"dev", "", "0.3", "0.3.0.1", "x.y.z", "0.3.-1", "0.3.0-"}
+	for _, v := range invalid {
+		if ValidVersion(v) {
+			t.Errorf("ValidVersion(%q) = true, want false", v)
+		}
+	}
+}

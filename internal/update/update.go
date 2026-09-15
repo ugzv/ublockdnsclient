@@ -105,29 +105,102 @@ func IsNewer(current, latest string) bool {
 	if !okC || !okL {
 		return false
 	}
-	for i := range c {
-		if l[i] != c[i] {
-			return l[i] > c[i]
-		}
-	}
-	return false
+	return compareVersions(l, c) > 0
 }
 
-func parseVersion(v string) ([3]int, bool) {
+// version is a semantic version. pre is empty for a final release; a release
+// candidate carries its dot-separated prerelease identifiers, which is what
+// lets a machine running v0.3.0-rc.1 update itself to v0.3.0.
+type version struct {
+	nums [3]int
+	pre  []string
+}
+
+func parseVersion(v string) (version, bool) {
 	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
-	parts := strings.Split(v, ".")
-	if len(parts) != 3 {
-		return [3]int{}, false
+	if i := strings.IndexByte(v, '+'); i >= 0 {
+		v = v[:i] // build metadata is not part of precedence
 	}
-	var out [3]int
+
+	core, pre, hasPre := strings.Cut(v, "-")
+	if hasPre && pre == "" {
+		return version{}, false // trailing "-" with no identifiers
+	}
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
+		return version{}, false
+	}
+
+	var out version
 	for i, p := range parts {
 		n, err := strconv.Atoi(p)
 		if err != nil || n < 0 {
-			return [3]int{}, false
+			return version{}, false
 		}
-		out[i] = n
+		out.nums[i] = n
+	}
+
+	if hasPre {
+		out.pre = strings.Split(pre, ".")
+		for _, id := range out.pre {
+			if id == "" {
+				return version{}, false
+			}
+		}
 	}
 	return out, true
+}
+
+// compareVersions returns a negative number when a precedes b, zero when they
+// are equal, and a positive number when a follows b.
+func compareVersions(a, b version) int {
+	for i := range a.nums {
+		if a.nums[i] != b.nums[i] {
+			return a.nums[i] - b.nums[i]
+		}
+	}
+
+	// A prerelease precedes the release it leads up to: 1.0.0-rc.1 < 1.0.0.
+	switch {
+	case len(a.pre) == 0 && len(b.pre) == 0:
+		return 0
+	case len(a.pre) == 0:
+		return 1
+	case len(b.pre) == 0:
+		return -1
+	}
+
+	for i := 0; i < len(a.pre) && i < len(b.pre); i++ {
+		if c := comparePreIdentifiers(a.pre[i], b.pre[i]); c != 0 {
+			return c
+		}
+	}
+	return len(a.pre) - len(b.pre)
+}
+
+// comparePreIdentifiers orders two prerelease identifiers: numeric ones compare
+// numerically and rank below alphanumeric ones, which compare lexically.
+func comparePreIdentifiers(a, b string) int {
+	an, aNum := atoiNonNegative(a)
+	bn, bNum := atoiNonNegative(b)
+	switch {
+	case aNum && bNum:
+		return an - bn
+	case aNum:
+		return -1
+	case bNum:
+		return 1
+	default:
+		return strings.Compare(a, b)
+	}
+}
+
+func atoiNonNegative(s string) (int, bool) {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
 }
 
 // Apply replaces the current executable with the latest release when one is

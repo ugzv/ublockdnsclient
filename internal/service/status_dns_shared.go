@@ -15,7 +15,7 @@ type systemDNSAssessment struct {
 func newDNSAssessment(dns []string) systemDNSAssessment {
 	return systemDNSAssessment{
 		DNS:      dns,
-		LocalDNS: core.HasDNS127001(dns),
+		LocalDNS: core.HasLocalDNS(dns),
 	}
 }
 

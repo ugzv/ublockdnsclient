@@ -6,6 +6,9 @@ param(
     [string]$AccountToken,
 
     [Parameter(Mandatory = $false)]
+    [string]$AccountTokenFile,
+
+    [Parameter(Mandatory = $false)]
     [string]$Version,
 
     [Parameter(Mandatory = $false)]
@@ -22,6 +25,7 @@ $commonPath = Join-Path $PSScriptRoot "scripts/windows/common.ps1"
 if (Test-Path $commonPath) {
     . $commonPath
 } else {
+    # BEGIN GENERATED HELPERS
     function Test-Admin {
         $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
         $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
@@ -29,9 +33,9 @@ if (Test-Path $commonPath) {
     }
 
     function Assert-SupportedWindowsVersion {
-        $versionInfo = [System.Environment]::OSVersion.Version
-        if ($versionInfo.Major -lt 10) {
-            throw "Windows 10 or later is required. Current version detected: $($versionInfo.ToString()). The published uBlockDNS binaries are built with a Go toolchain that no longer supports Windows 7/8/8.1."
+        $version = [System.Environment]::OSVersion.Version
+        if ($version.Major -lt 10) {
+            throw "Windows 10 or later is required. Current version detected: $($version.ToString()). The published uBlockDNS binaries are built with a Go toolchain that no longer supports Windows 7/8/8.1."
         }
     }
 
@@ -47,7 +51,10 @@ if (Test-Path $commonPath) {
 
     function Invoke-DownloadFile {
         param(
+            [Parameter(Mandatory = $true)]
             [string]$Uri,
+
+            [Parameter(Mandatory = $true)]
             [string]$OutFile
         )
 
@@ -61,44 +68,88 @@ if (Test-Path $commonPath) {
             $client.Dispose()
         }
     }
+
+    function New-AccountTokenFile {
+        param([Parameter(Mandatory = $true)][string]$Token)
+
+        $directory = Join-Path ([IO.Path]::GetTempPath()) ("ublockdns-token-" + [Guid]::NewGuid().ToString('N'))
+        try {
+            New-Item -ItemType Directory -Path $directory | Out-Null
+            $acl = New-Object Security.AccessControl.DirectorySecurity
+            $acl.SetAccessRuleProtection($true, $false)
+            $identities = @(
+                [Security.Principal.WindowsIdentity]::GetCurrent().User,
+                [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'),
+                [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+            )
+            foreach ($identity in $identities) {
+                $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+                    $identity, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')
+                $acl.AddAccessRule($rule)
+            }
+            Set-Acl -LiteralPath $directory -AclObject $acl
+            $path = Join-Path $directory "token"
+            [IO.File]::WriteAllText($path, $Token)
+            return $path
+        } catch {
+            Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction SilentlyContinue
+            throw
+        }
+    }
+    # END GENERATED HELPERS
+}
+
+if ($AccountTokenFile) {
+    if ($AccountToken) {
+        throw "Specify AccountToken or AccountTokenFile, not both."
+    }
+    $AccountToken = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $AccountTokenFile).Path).Trim()
 }
 
 if (-not (Test-Admin)) {
     Write-Host "Requesting administrator privileges ..."
-    $args = @(
+    $elevationArgs = @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
         "-File", ('"{0}"' -f $PSCommandPath)
     )
-    if ($KeepOpen) { $args += "-KeepOpen" }
-    if ($NoPause) { $args += "-NoPause" }
-    if ($ProfileId) { $args += @("-ProfileId", ('"{0}"' -f $ProfileId)) }
-    if ($AccountToken) { $args += @("-AccountToken", ('"{0}"' -f $AccountToken)) }
-    if ($Version) { $args += @("-Version", ('"{0}"' -f $Version)) }
+    if ($KeepOpen) { $elevationArgs += "-KeepOpen" }
+    if ($NoPause) { $elevationArgs += "-NoPause" }
+    if ($ProfileId) { $elevationArgs += @("-ProfileId", ('"{0}"' -f $ProfileId)) }
+    if ($Version) { $elevationArgs += @("-Version", ('"{0}"' -f $Version)) }
 
     $startParams = @{
         FilePath     = "powershell"
         Verb         = "RunAs"
-        ArgumentList = ($args -join " ")
+        ArgumentList = ($elevationArgs -join " ")
+        Wait         = $true
+        PassThru     = $true
     }
-    if ($NoPause) {
-        $startParams["Wait"] = $true
-        $startParams["PassThru"] = $true
-    }
-
+    $tokenPath = $null
     try {
-        $proc = Start-Process @startParams
-        if ($NoPause -and $proc) {
-            exit $proc.ExitCode
+        if ($AccountToken) {
+            $tokenPath = New-AccountTokenFile -Token $AccountToken
+            $elevationArgs += @("-AccountTokenFile", ('"{0}"' -f $tokenPath))
+            $startParams["ArgumentList"] = $elevationArgs -join " "
         }
+        $proc = Start-Process @startParams
+        exit $proc.ExitCode
     } catch {
         throw "Failed to start elevated setup: $($_.Exception.Message)"
+    } finally {
+        if ($tokenPath) {
+            Remove-Item -LiteralPath (Split-Path -Parent $tokenPath) -Recurse -Force
+        }
     }
-    exit 0
 }
 
+$transcriptStarted = $false
 try {
-    Start-Transcript -Path $logPath -Force | Out-Null
+    # A transcript header includes the host command line, including legacy token arguments.
+    if (-not $PSBoundParameters.ContainsKey("AccountToken")) {
+        Start-Transcript -Path $logPath -Force | Out-Null
+        $transcriptStarted = $true
+    }
 } catch {}
 
 try {
@@ -119,10 +170,8 @@ try {
     }
 
     if (-not $AccountToken) {
-        $tokenPrompt = Read-Host "Enter account token for instant rule updates (optional, press Enter to skip)"
-        if ($tokenPrompt) {
-            $AccountToken = $tokenPrompt
-        }
+        $tokenPrompt = Read-Host "Enter account token for instant rule updates (optional, press Enter to skip)" -AsSecureString
+        $AccountToken = [Net.NetworkCredential]::new("", $tokenPrompt).Password
     }
 
     $repoRoot = Split-Path -Parent $PSCommandPath
@@ -151,15 +200,12 @@ try {
         }
     }
 
-    $installArgs = @("-ProfileId", $ProfileId)
-    if ($AccountToken) { $installArgs += @("-AccountToken", $AccountToken) }
-    if ($Version) { $installArgs += @("-Version", $Version) }
+    $installArgs = @{ ProfileId = $ProfileId }
+    if ($AccountToken) { $installArgs["AccountToken"] = $AccountToken }
+    if ($Version) { $installArgs["Version"] = $Version }
 
     Write-Host "Running installer ..."
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $installerPath @installArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Installer failed with exit code $LASTEXITCODE."
-    }
+    & $installerPath @installArgs
 
     Write-Host ""
     Write-Host "Setup complete."
@@ -178,9 +224,11 @@ try {
 } catch {
     Write-Host ""
     Write-Error "Setup failed: $($_.Exception.Message)"
-    Write-Host "See log: $logPath"
+    if ($transcriptStarted) { Write-Host "See log: $logPath" }
 } finally {
-    try { Stop-Transcript | Out-Null } catch {}
+    if ($transcriptStarted) {
+        try { Stop-Transcript | Out-Null } catch {}
+    }
     $exitCode = 0
     if (-not $setupOk) {
         $exitCode = 1

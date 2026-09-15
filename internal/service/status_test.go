@@ -11,7 +11,7 @@ func TestCurrentStatusIncludesProbeFailureDetails(t *testing.T) {
 	withStatusTestEnv(t, statusTestEnv{
 		serviceState:     func() (string, error) { return "running", nil },
 		resolveSystemDNS: func() systemDNSAssessment { return localSystemDNS() },
-		localDNSProbe:    func() error { return errors.New("udp timeout") },
+		localDNSProbe:    func(...string) error { return errors.New("udp timeout") },
 		loadInstallState: missingInstallState,
 	})
 
@@ -34,7 +34,7 @@ func TestCurrentStatusMarksReadyAfterSuccessfulProbe(t *testing.T) {
 	withStatusTestEnv(t, statusTestEnv{
 		serviceState:     func() (string, error) { return "running", nil },
 		resolveSystemDNS: func() systemDNSAssessment { return localSystemDNS() },
-		localDNSProbe:    func() error { return nil },
+		localDNSProbe:    func(...string) error { return nil },
 		loadInstallState: missingInstallState,
 	})
 
@@ -96,8 +96,8 @@ func TestEvaluateReadiness(t *testing.T) {
 			want: readinessVerdict{
 				status:   "inactive",
 				code:     "dns_not_local",
-				detail:   "System DNS does not point to 127.0.0.1.",
-				warnings: []string{"service is running but system DNS is not pointing to 127.0.0.1"},
+				detail:   "System DNS does not point to the local proxy.",
+				warnings: []string{"service is running but system DNS is not pointing to the local proxy"},
 			},
 		},
 		{
@@ -108,7 +108,7 @@ func TestEvaluateReadiness(t *testing.T) {
 			want: readinessVerdict{
 				status:   "inactive",
 				code:     "local_dns_probe_failed",
-				detail:   "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+				detail:   "A configured local DNS address did not answer a DNS probe.",
 				probeErr: "udp timeout",
 				warnings: []string{"local DNS probe failed: udp timeout"},
 			},
@@ -121,7 +121,7 @@ func TestEvaluateReadiness(t *testing.T) {
 				status: "active",
 				ready:  true,
 				code:   "ready",
-				detail: "uBlockDNS is responding on 127.0.0.1:53.",
+				detail: "uBlockDNS is responding on all configured local DNS addresses.",
 			},
 		},
 		{
@@ -132,7 +132,7 @@ func TestEvaluateReadiness(t *testing.T) {
 				status:   "inactive",
 				code:     "service_stopped",
 				detail:   "uBlockDNS service is installed but not running.",
-				warnings: []string{"system DNS includes 127.0.0.1 but service is not running"},
+				warnings: []string{"system DNS points to the local proxy but service is not running"},
 			},
 		},
 		{
@@ -143,7 +143,7 @@ func TestEvaluateReadiness(t *testing.T) {
 			want: readinessVerdict{
 				status:   "inactive",
 				code:     "local_dns_probe_failed",
-				detail:   "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+				detail:   "A configured local DNS address did not answer a DNS probe.",
 				probeErr: "probe failed",
 				warnings: []string{
 					"local DNS probe failed: probe failed",
@@ -156,7 +156,7 @@ func TestEvaluateReadiness(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			withStatusTestEnv(t, statusTestEnv{
-				localDNSProbe: func() error { return tt.probeErr },
+				localDNSProbe: func(...string) error { return tt.probeErr },
 			})
 
 			got := evaluateReadiness(tt.svcState, tt.localDNS)
@@ -182,7 +182,7 @@ func TestWaitUntilReadyReturnsReadinessFailure(t *testing.T) {
 				Service:     "running",
 				LocalDNS:    true,
 				ReadyCode:   "local_dns_probe_failed",
-				ReadyDetail: "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+				ReadyDetail: "A configured local DNS address did not answer a DNS probe.",
 				ProbeError:  "probe failed",
 			}
 		},
@@ -217,7 +217,7 @@ func TestWaitUntilReadySucceedsAfterProbePasses(t *testing.T) {
 					Service:     "running",
 					LocalDNS:    true,
 					ReadyCode:   "local_dns_probe_failed",
-					ReadyDetail: "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe.",
+					ReadyDetail: "A configured local DNS address did not answer a DNS probe.",
 					ProbeError:  "not yet",
 				}
 			}
@@ -261,4 +261,32 @@ func sameStringSet(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func TestCurrentStatusProbesEveryConfiguredLoopback(t *testing.T) {
+	for _, dns := range [][]string{{"::1"}, {"127.0.0.1", "::1"}} {
+		t.Run(strings.Join(dns, ","), func(t *testing.T) {
+			var probed []string
+			withStatusTestEnv(t, statusTestEnv{
+				serviceState:     func() (string, error) { return "running", nil },
+				resolveSystemDNS: func() systemDNSAssessment { return newDNSAssessment(dns) },
+				loadInstallState: missingInstallState,
+				localDNSProbe: func(servers ...string) error {
+					probed = append(probed, servers...)
+					return errors.New("IPv6 listener unavailable")
+				},
+			})
+			info := CurrentStatus()
+			if !info.LocalDNS || info.Ready || info.ReadyCode != "local_dns_probe_failed" {
+				t.Fatalf("status = %+v", info)
+			}
+			want := []string{"[::1]:53"}
+			if len(dns) == 2 {
+				want = append([]string{"127.0.0.1:53"}, want...)
+			}
+			if !sameStringSet(probed, want) {
+				t.Fatalf("probed = %v, want %v", probed, want)
+			}
+		})
+	}
 }

@@ -29,8 +29,8 @@ const readinessProbeHost = core.ProbeDomain
 
 var (
 	currentStatusFunc = CurrentStatus
-	localDNSProbeFunc = func() error {
-		return core.CheckLocalDNSProxy(readinessProbeHost)
+	localDNSProbeFunc = func(servers ...string) error {
+		return core.CheckLocalDNSProxy(readinessProbeHost, servers...)
 	}
 	serviceStateFunc          = platformServiceState
 	resolveSystemDNSFunc      = resolveSystemDNS
@@ -82,7 +82,7 @@ func CurrentStatus() StatusInfo {
 		info.APIServer = st.APIServer
 	}
 
-	verdict := evaluateReadiness(svcState, dnsAssessment.LocalDNS)
+	verdict := evaluateReadiness(svcState, dnsAssessment.LocalDNS, core.LocalDNSAddresses(dnsAssessment.DNS)...)
 	info.Status = verdict.status
 	info.Ready = verdict.ready
 	info.ReadyCode = verdict.code
@@ -93,7 +93,7 @@ func CurrentStatus() StatusInfo {
 	return info
 }
 
-func evaluateReadiness(svcState string, localDNS bool) readinessVerdict {
+func evaluateReadiness(svcState string, localDNS bool, servers ...string) readinessVerdict {
 	verdict := readinessVerdict{
 		status: "inactive",
 	}
@@ -107,26 +107,26 @@ func evaluateReadiness(svcState string, localDNS bool) readinessVerdict {
 		verdict.detail = "uBlockDNS service is installed but not running."
 	case !localDNS:
 		verdict.code = "dns_not_local"
-		verdict.detail = "System DNS does not point to 127.0.0.1."
+		verdict.detail = "System DNS does not point to the local proxy."
 	default:
-		if err := localDNSProbeFunc(); err != nil {
+		if err := localDNSProbeFunc(servers...); err != nil {
 			verdict.code = "local_dns_probe_failed"
-			verdict.detail = "System DNS points to 127.0.0.1, but the local proxy did not answer a DNS probe."
+			verdict.detail = "A configured local DNS address did not answer a DNS probe."
 			verdict.probeErr = err.Error()
 			verdict.warnings = append(verdict.warnings, fmt.Sprintf("local DNS probe failed: %v", err))
 		} else {
 			verdict.status = "active"
 			verdict.ready = true
 			verdict.code = "ready"
-			verdict.detail = "uBlockDNS is responding on 127.0.0.1:53."
+			verdict.detail = "uBlockDNS is responding on all configured local DNS addresses."
 		}
 	}
 
 	if svcState == "running" && !localDNS {
-		verdict.warnings = append(verdict.warnings, "service is running but system DNS is not pointing to 127.0.0.1")
+		verdict.warnings = append(verdict.warnings, "service is running but system DNS is not pointing to the local proxy")
 	}
 	if localDNS && svcState != "running" && svcState != "unknown" {
-		verdict.warnings = append(verdict.warnings, "system DNS includes 127.0.0.1 but service is not running")
+		verdict.warnings = append(verdict.warnings, "system DNS points to the local proxy but service is not running")
 	}
 	if svcState == "unknown" {
 		verdict.warnings = append(verdict.warnings, "service state could not be determined; readiness was inferred from DNS settings and probe results")

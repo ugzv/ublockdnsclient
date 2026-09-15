@@ -22,7 +22,8 @@
    - `setup.ps1`
 5. Smoke test installers:
    - Use the tagged release assets for the exact version being validated, not raw `main`.
-   - Unix: `curl -sSfL https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.sh | sh -s -- <profile-id>`
+   - Pass `--version` on Unix and `-Version` on Windows. Without them the installers resolve GitHub's "latest", so downloading a tagged `install.sh` still installs whatever is current, and a release candidate is never installable at all (GitHub excludes prereleases from "latest").
+   - Unix: `curl -sSfL https://github.com/ugzv/ublockdnsclient/releases/download/vX.Y.Z/install.sh | sh -s -- <profile-id> --version vX.Y.Z`
    - Hosted Unix (served by backend): `curl -sSfL https://ublockdns.com/install.sh | sh -s -- <profile-id>`
    - Windows 10+ (Admin PowerShell, dashboard flow): `irm https://ublockdns.com/install?id=<profile-id> | iex`
    - Windows 10+ (manual script download): use `/install-script`, not `/install.ps1` — Cloudflare can redirect `.ps1` URLs to an HTML page.
@@ -51,3 +52,13 @@
 - Windows token path: `%ProgramData%\\ublockdns`.
 - Unix token path: `/etc/ublockdns`.
 - Release builds are managed by GoReleaser (`.goreleaser.yml`).
+
+## Windows Installer Helpers
+
+Edit shared PowerShell helpers in `scripts/windows/common.ps1`, then run
+`./scripts/windows/sync-helpers.ps1` to update the standalone installers.
+The generated blocks keep downloaded scripts self-contained; do not edit them directly.
+
+Run `./scripts/windows/sync-helpers.ps1 -Check` and
+`./scripts/windows/test-installers.ps1` before submitting installer changes.
+CI runs both with Windows PowerShell 5.1, including token-file ACL checks.

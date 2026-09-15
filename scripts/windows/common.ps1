@@ -86,3 +86,31 @@ function Resolve-GitHubLatestTag {
         $response.Close()
     }
 }
+
+function New-AccountTokenFile {
+    param([Parameter(Mandatory = $true)][string]$Token)
+
+    $directory = Join-Path ([IO.Path]::GetTempPath()) ("ublockdns-token-" + [Guid]::NewGuid().ToString('N'))
+    try {
+        New-Item -ItemType Directory -Path $directory | Out-Null
+        $acl = New-Object Security.AccessControl.DirectorySecurity
+        $acl.SetAccessRuleProtection($true, $false)
+        $identities = @(
+            [Security.Principal.WindowsIdentity]::GetCurrent().User,
+            [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'),
+            [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+        )
+        foreach ($identity in $identities) {
+            $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+                $identity, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')
+            $acl.AddAccessRule($rule)
+        }
+        Set-Acl -LiteralPath $directory -AclObject $acl
+        $path = Join-Path $directory "token"
+        [IO.File]::WriteAllText($path, $Token)
+        return $path
+    } catch {
+        Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+}

@@ -69,7 +69,7 @@ func TestResolveSystemDNSFallsBackToResolvConf(t *testing.T) {
 func TestCurrentStatusUsesLinuxResolverAssessment(t *testing.T) {
 	withStatusTestEnv(t, statusTestEnv{
 		serviceState:     func() (string, error) { return "running", nil },
-		localDNSProbe:    func() error { return nil },
+		localDNSProbe:    func(...string) error { return nil },
 		loadInstallState: missingInstallState,
 		hostDNS:          func() []string { return []string{"8.8.8.8", "8.8.4.4"} },
 		commandOutput: func(name string, args ...string) ([]byte, error) {

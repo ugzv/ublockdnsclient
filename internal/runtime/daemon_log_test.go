@@ -13,6 +13,8 @@ func TestRotatingWriterRotatesAtCap(t *testing.T) {
 	if err := w.openLocked(); err != nil {
 		t.Fatal(err)
 	}
+	// TempDir cleanup fails on Windows while the log file is still open.
+	t.Cleanup(func() { _ = w.Close() })
 
 	line := strings.Repeat("x", 1024)
 	for written := 0; written <= maxDaemonLogSize; written += len(line) {

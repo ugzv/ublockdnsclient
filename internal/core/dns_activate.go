@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 
 	"github.com/nextdns/nextdns/host"
 )
@@ -18,7 +19,7 @@ var (
 // activateSystemDNS points the host resolver at the local uBlockDNS proxy via
 // nextdns. Non-Linux platforms reach it through ActivatePlatformSystemDNS.
 func activateSystemDNS() error {
-	return setSystemDNSFunc(LocalDNSAddress)
+	return setSystemDNSFunc(LocalDNSIP)
 }
 
 // ActivatePlatformSystemDNS applies the platform-specific system DNS install path.
@@ -109,11 +110,18 @@ func SwapPlatformSystemDNSFuncs(activate func() error, restoreArtifacts func() e
 	}
 }
 
-func HasDNS127001(dns []string) bool {
-	for _, d := range dns {
-		if d == LocalDNSAddress {
-			return true
+func HasLocalDNS(dns []string) bool {
+	return len(LocalDNSAddresses(dns)) > 0
+}
+
+// LocalDNSAddresses returns the configured proxy addresses, once per family.
+func LocalDNSAddresses(dns []string) []string {
+	var addresses []string
+	for _, server := range dns {
+		ip := net.ParseIP(server)
+		if ip.Equal(net.IPv4(127, 0, 0, 1)) || ip.Equal(net.IPv6loopback) {
+			addresses = append(addresses, net.JoinHostPort(ip.String(), "53"))
 		}
 	}
-	return false
+	return CollectUniqueNonEmpty(addresses)
 }

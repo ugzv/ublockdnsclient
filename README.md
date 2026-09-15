@@ -66,6 +66,8 @@ A Windows GUI installer (.exe) is also available on the [releases page](https://
 
 The service updates itself daily; releases are verified against the uBlockDNS signing key before being applied. Set `UBLOCKDNS_NO_AUTOUPDATE=1` in the service environment to opt out, or update manually with `sudo ublockdns upgrade`.
 
+Automatic updates apply on macOS, Windows, and Linux. On FreeBSD, `rc.d` does not restart a service that exits, so the client does not update itself there; use `sudo ublockdns upgrade`. The client logs which mode it is in at startup.
+
 Older versions without the `upgrade` command: re-run the install command once and automatic updates take over.
 
 ### Uninstalling
@@ -113,7 +115,7 @@ Manage your filter lists, custom rules, and query log from the [dashboard](https
 
 ## How it works
 
-The client runs a local DNS proxy on `127.0.0.1:53` and forwards all queries to the uBlockDNS service over encrypted DNS-over-HTTPS. The service evaluates each query against the filter lists and custom rules enabled for your profile, then returns either the normal DNS answer or a block response.
+The client runs a local DNS proxy on `127.0.0.1:53` and, when IPv6 is available, `[::1]:53`. It forwards all queries to the uBlockDNS service over encrypted DNS-over-HTTPS. The service evaluates each query against the filter lists and custom rules enabled for your profile, then returns either the normal DNS answer or a block response.
 
 When you update filter lists or custom rules in the dashboard, the client receives those changes in real time and flushes the local DNS cache automatically so new decisions take effect quickly.
 

@@ -35,6 +35,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          # Promoting a candidate means the final tag lands on the same commit
+          # as its last rc. GoReleaser then has two tags to choose from and
+          # picked the rc, trying to re-upload into a release that already had
+          # assets. Name the tag being built explicitly.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
       - name: Publish script checksums
         if: startsWith(github.ref, 'refs/tags/')

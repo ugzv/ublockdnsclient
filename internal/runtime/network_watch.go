@@ -17,13 +17,13 @@ func defaultWatchNetworkChanges(ctx context.Context, changes chan<- string) {
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 
-	prev, _ := net.Interfaces()
+	prev, _ := snapshotInterfaces()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			current, err := net.Interfaces()
+			current, err := snapshotInterfaces()
 			if err != nil {
 				continue
 			}
@@ -39,9 +39,31 @@ func defaultWatchNetworkChanges(ctx context.Context, changes chan<- string) {
 	}
 }
 
-func diffInterfaces(old, new []net.Interface) string {
-	old = append([]net.Interface(nil), old...)
-	new = append([]net.Interface(nil), new...)
+type interfaceState struct {
+	Name  string
+	Flags net.Flags
+	Addrs []net.Addr
+}
+
+func snapshotInterfaces() ([]interfaceState, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	states := make([]interfaceState, 0, len(interfaces))
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return nil, err
+		}
+		states = append(states, interfaceState{Name: iface.Name, Flags: iface.Flags, Addrs: addrs})
+	}
+	return states, nil
+}
+
+func diffInterfaces(old, new []interfaceState) string {
+	old = append([]interfaceState(nil), old...)
+	new = append([]interfaceState(nil), new...)
 	sort.Slice(old, func(i, j int) bool { return old[i].Name < old[j].Name })
 	sort.Slice(new, func(i, j int) bool { return new[i].Name < new[j].Name })
 
@@ -73,9 +95,7 @@ func diffInterfaces(old, new []net.Interface) string {
 			}
 			return fmt.Sprintf("%s flag %v -> %v", new[i].Name, old[i].Flags, new[i].Flags)
 		}
-		oldAddrs, _ := old[i].Addrs()
-		newAddrs, _ := new[i].Addrs()
-		if d := diffAddrs(oldAddrs, newAddrs); d != "" {
+		if d := diffAddrs(old[i].Addrs, new[i].Addrs); d != "" {
 			return fmt.Sprintf("%s %s", new[i].Name, d)
 		}
 	}

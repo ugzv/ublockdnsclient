@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -22,12 +23,31 @@ const (
 // started proxy to answer before reporting the preflight as failed.
 const localDNSPreflightTimeout = 10 * time.Second
 
+// installPreconditions is the service state an install starts from.
+type installPreconditions struct {
+	installed bool
+	running   bool
+}
+
+// assessInstallPreconditions interprets the platform service state. An
+// unreadable state is treated as "nothing there": install proceeds, and the
+// steps that would have run are ones the following Uninstall covers anyway.
+func assessInstallPreconditions(serviceState string, err error) installPreconditions {
+	if err != nil {
+		return installPreconditions{}
+	}
+	return installPreconditions{
+		installed: serviceState != "" && serviceState != "not-installed",
+		running:   serviceState == "running",
+	}
+}
+
 // waitForLocalDNSProxy polls the local proxy until it answers or the timeout
 // elapses, returning the last probe error.
-func waitForLocalDNSProxy(timeout time.Duration) error {
+func waitForLocalDNSProxy(timeout time.Duration, servers ...string) error {
 	deadline := nowFunc().Add(timeout)
 	for {
-		err := localDNSProbeFunc()
+		err := localDNSProbeFunc(servers...)
 		if err == nil {
 			return nil
 		}
@@ -44,13 +64,13 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		return InstallOutcomeFresh, fmt.Errorf("install requires elevated privileges - %s", installPrivilegeHint())
 	}
 
-	prevDNSLocal := core.HasDNS127001(resolveSystemDNSFunc().DNS)
-	prevInstalled := serviceCurrentlyInstalled()
+	prevDNS := core.LocalDNSAddresses(resolveSystemDNSFunc().DNS)
+	prev := assessInstallPreconditions(serviceStateFunc())
 	prevState, prevStateErr := state.LoadInstallState()
 	hasPrevState := prevStateErr == nil && strings.TrimSpace(prevState.ProfileID) != ""
 
 	outcome := InstallOutcomeFresh
-	if prevInstalled {
+	if prev.installed {
 		outcome = InstallOutcomeUpdated
 		if hasPrevState && prevState.ProfileID != profileID {
 			outcome = InstallOutcomeSwitched
@@ -62,13 +82,19 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 		return outcome, err
 	}
 
-	// Uninstall any previous version first. Stopping is skipped when nothing is
-	// installed: attempting it anyway is what printed "Warning: failed to stop
-	// service: Unit ublockdns.service not loaded" on every first-time install,
-	// which reads as a failure in an install that is going fine. DNS artifacts
-	// are still cleared, since a previously rolled-back install can leave them
-	// behind with no service registered.
-	if prevInstalled {
+	// Uninstall any previous version first. Only stop a service that is
+	// actually running: every service manager reports an error when asked to
+	// stop something that is already stopped or absent, and those errors were
+	// surfacing as warnings that read like install failures.
+	//
+	//   systemd: Unit ublockdns.service not loaded          (fresh install)
+	//   launchd: Unload failed: 5: Input/output error        (reinstall, since
+	//            install.sh stops the service before this runs)
+	//
+	// Uninstall below removes the registration either way, and DNS artifacts
+	// are always cleared, since a rolled-back install can leave them behind
+	// with no service registered.
+	if prev.running {
 		_ = stopService(svc)
 	}
 	restoreSystemDNSBestEffortFunc()
@@ -76,8 +102,8 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 
 	log.Println("Installing service...")
 	if err := svc.Install(); err != nil {
-		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
-		return outcome, fmt.Errorf("install service: %w", err)
+		return outcome, errors.Join(fmt.Errorf("install service: %w", err),
+			rollbackInstall(prev, prevDNS, hasPrevState, prevState))
 	}
 	ensureSystemdRestartPolicy()
 
@@ -87,8 +113,8 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 	if err := svc.Start(); err != nil {
 		// Rollback: remove service if it can't start.
 		_ = svc.Uninstall()
-		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
-		return outcome, fmt.Errorf("start service: %w", err)
+		return outcome, errors.Join(fmt.Errorf("start service: %w", err),
+			rollbackInstall(prev, prevDNS, hasPrevState, prevState))
 	}
 
 	if strings.TrimSpace(accountToken) != "" {
@@ -112,8 +138,8 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 	// best-effort activates on startup via manageSystemDNS.
 	log.Println("Verifying system DNS points to 127.0.0.1...")
 	if err := activatePlatformSystemDNSFunc(); err != nil {
-		rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState, prevState)
-		return outcome, fmt.Errorf("activate system DNS: %w", err)
+		return outcome, errors.Join(fmt.Errorf("activate system DNS: %w", err),
+			rollbackInstall(prev, prevDNS, hasPrevState, prevState))
 	}
 
 	if err := state.PersistInstallState(profileID, dohServer, apiServer); err != nil {
@@ -123,36 +149,47 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 	return outcome, nil
 }
 
-func rollbackInstall(prevInstalled, prevDNSLocal, hasPrevState bool, prevState state.InstallState) {
+func rollbackInstall(prev installPreconditions, prevDNS []string, hasPrevState bool, prevState state.InstallState) error {
 	log.Printf("Install failed, attempting rollback...")
-
 	if svc, err := baseService(); err == nil {
 		_ = stopServiceAndRestoreDNS(svc)
 		_ = svc.Uninstall()
 	}
 
-	if prevInstalled && hasPrevState {
-		if oldSvc, err := newService(prevState.ProfileID, prevState.DoHServer, prevState.APIServer); err == nil {
-			if err := oldSvc.Install(); err != nil {
-				log.Printf("Rollback warning: failed to reinstall previous service config: %v", err)
-			}
-			if err := oldSvc.Start(); err != nil {
-				log.Printf("Rollback warning: failed to start previous service config: %v", err)
-			}
-		} else {
-			log.Printf("Rollback warning: could not create previous service config: %v", err)
+	recoverService := func() error {
+		if !prev.installed {
+			return nil
 		}
-	} else if prevInstalled {
-		log.Printf("Rollback warning: previous service config unknown; manual reinstall may be required.")
+		if !hasPrevState {
+			return errors.New("previous service config unknown; manual reinstall may be required")
+		}
+		svc, err := newService(prevState.ProfileID, prevState.DoHServer, prevState.APIServer)
+		if err != nil {
+			return err
+		}
+		if err := svc.Install(); err != nil {
+			return fmt.Errorf("reinstall previous service: %w", err)
+		}
+		if !prev.running {
+			return nil
+		}
+		if err := svc.Start(); err != nil {
+			return fmt.Errorf("restart previous service: %w", err)
+		}
+		return waitForLocalDNSProxy(localDNSPreflightTimeout, prevDNS...)
 	}
 
-	if prevDNSLocal {
-		if err := activatePlatformSystemDNSFunc(); err != nil {
-			log.Printf("Rollback warning: failed to restore local DNS setting: %v", err)
-		}
-	} else {
-		if err := restoreSystemDNSStrictFunc(); err != nil {
-			log.Printf("Rollback warning: failed to restore DNS defaults: %v", err)
+	err := recoverService()
+	if err == nil && prev.running && len(prevDNS) > 0 {
+		err = activatePlatformSystemDNSFunc()
+		if err == nil {
+			return nil
 		}
 	}
+	// Never restore loopback DNS when recovery could not establish a working proxy.
+	err = errors.Join(err, restoreSystemDNSStrictFunc())
+	if err != nil {
+		return fmt.Errorf("rollback: %w", err)
+	}
+	return nil
 }

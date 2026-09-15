@@ -30,6 +30,13 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Windows installer regression tests
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          ./scripts/windows/sync-helpers.ps1 -Check
+          ./scripts/windows/test-installers.ps1
+
   checks:
     runs-on: ubuntu-latest
     steps:

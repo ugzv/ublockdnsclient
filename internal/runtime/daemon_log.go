@@ -52,9 +52,27 @@ func (w *rotatingWriter) openLocked() error {
 	return nil
 }
 
+// Close releases the log file. The daemon holds it open for its whole
+// lifetime, so this exists for callers that own a writer with a shorter life,
+// notably tests: Windows refuses to delete a file that is still open.
+func (w *rotatingWriter) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.f == nil {
+		return nil
+	}
+	err := w.f.Close()
+	w.f = nil
+	return err
+}
+
 func (w *rotatingWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.f == nil {
+		// Closed. Drop the line rather than panicking inside the logger.
+		return len(p), nil
+	}
 	if w.size+int64(len(p)) > maxDaemonLogSize {
 		_ = w.f.Close()
 		_ = os.Rename(w.path, w.path+".old")
