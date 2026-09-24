@@ -23,6 +23,10 @@ const (
 // started proxy to answer before reporting the preflight as failed.
 const localDNSPreflightTimeout = 10 * time.Second
 
+// localDNSPortReleaseTimeout bounds how long install waits for a stopped
+// previous service to release port 53.
+const localDNSPortReleaseTimeout = 5 * time.Second
+
 // installPreconditions is the service state an install starts from.
 type installPreconditions struct {
 	installed bool
@@ -45,9 +49,15 @@ func assessInstallPreconditions(serviceState string, err error) installPrecondit
 // waitForLocalDNSProxy polls the local proxy until it answers or the timeout
 // elapses, returning the last probe error.
 func waitForLocalDNSProxy(timeout time.Duration, servers ...string) error {
+	return pollUntil(timeout, func() error { return localDNSProbeFunc(servers...) })
+}
+
+// pollUntil retries check until it succeeds or the timeout elapses, returning
+// the last error.
+func pollUntil(timeout time.Duration, check func() error) error {
 	deadline := nowFunc().Add(timeout)
 	for {
-		err := localDNSProbeFunc(servers...)
+		err := check()
 		if err == nil {
 			return nil
 		}
@@ -99,6 +109,18 @@ func InstallDetailed(profileID, dohServer, apiServer, accountToken string) (Inst
 	}
 	restoreSystemDNSBestEffortFunc()
 	_ = svc.Uninstall()
+
+	// The preflight probe below cannot tell our proxy from another local DNS
+	// server that already holds port 53: that server answers, the proxy fails
+	// to bind, and activation would route every query into it. Poll briefly
+	// because a just-stopped previous service may still be releasing the port.
+	if err := pollUntil(localDNSPortReleaseTimeout, func() error {
+		return core.CheckListenAddrsFree(core.LocalListenAddrs()...)
+	}); err != nil {
+		// A previous service could not bind either, so restore plain DNS
+		// rather than recovering it.
+		return outcome, errors.Join(err, rollbackInstall(installPreconditions{}, nil, false, state.InstallState{}))
+	}
 
 	log.Println("Installing service...")
 	if err := svc.Install(); err != nil {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"runtime"
 	"strings"
@@ -23,21 +22,10 @@ import (
 // dnsCacheEntries bounds the client-side DNS response cache.
 const dnsCacheEntries = 4096
 
-// localListenAddrs binds IPv4 loopback and, when the stack has it, IPv6
-// loopback too: Windows resolvers are pointed at ::1 alongside 127.0.0.1.
-func localListenAddrs() []string {
-	addrs := []string{core.LocalDNSAddr}
-	if l, err := net.Listen("tcp", "[::1]:0"); err == nil {
-		_ = l.Close()
-		addrs = append(addrs, core.LocalDNSAddrV6)
-	}
-	return addrs
-}
-
 // Run starts the DNS proxy in the foreground.
 func Run(version, profileID, overrideServer, overrideAPIServer, accountToken string) error {
 	setupDaemonLogging()
-	listenAddrs := localListenAddrs()
+	listenAddrs := core.LocalListenAddrs()
 	cfg, err := resolveRuntimeConfig(profileID, overrideServer, overrideAPIServer, accountToken)
 	if err != nil {
 		return err

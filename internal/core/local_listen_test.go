@@ -1,23 +1,21 @@
-package runtime
+package core
 
 import (
 	"net"
 	"slices"
 	"testing"
-
-	"github.com/ugzv/ublockdnsclient/internal/core"
 )
 
 func TestLocalListenAddrsIncludesAvailableLoopbacks(t *testing.T) {
 	t.Parallel()
-	want := []string{core.LocalDNSAddr}
+	want := []string{LocalDNSAddr}
 	if listener, err := net.Listen("tcp", "[::1]:0"); err == nil {
 		_ = listener.Close()
-		want = append(want, core.LocalDNSAddrV6)
+		want = append(want, LocalDNSAddrV6)
 	}
-	got := localListenAddrs()
+	got := LocalListenAddrs()
 	if !slices.Equal(got, want) {
-		t.Fatalf("localListenAddrs() = %v, want %v", got, want)
+		t.Fatalf("LocalListenAddrs() = %v, want %v", got, want)
 	}
 	for _, addr := range got {
 		host, _, err := net.SplitHostPort(addr)
@@ -37,5 +35,19 @@ func TestLocalListenAddrsIncludesAvailableLoopbacks(t *testing.T) {
 			t.Fatal(err)
 		}
 		_ = udp.Close()
+	}
+}
+
+func TestCheckListenAddrsFreeRejectsOccupiedPort(t *testing.T) {
+	t.Parallel()
+	// Stands in for dnsmasq holding 127.0.0.1:53, without needing port 53.
+	busy, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = busy.Close() }()
+
+	if err := CheckListenAddrsFree(busy.LocalAddr().String()); err == nil {
+		t.Fatal("CheckListenAddrsFree() = nil, want error for an occupied address")
 	}
 }
