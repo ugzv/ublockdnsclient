@@ -90,7 +90,7 @@ jobs:
           Copy-Item "dist/setup.ps1" "packaging/windows/setup.ps1" -Force
 
       - name: Compile GUI installer
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.6
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.9
         with:
           path: packaging/windows/ublockdns.iss
           options: /DMyAppVersion=${{ github.ref_name }}
