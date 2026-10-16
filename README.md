@@ -1,5 +1,5 @@
 # uBlockDNS Client
-
+https://github.com/ugzv/ublockdnsclient
 uBlockDNS Client is an independent project and is **not affiliated with, endorsed by, or related to uBlock Origin or its maintainer**.
 
 uBlockDNS Client brings DNS-level ad and tracker blocking to your entire device. It uses community-maintained filter lists such as EasyList and EasyPrivacy, applied at the DNS layer so apps, browsers, and background services are covered without per-browser extensions.
