@@ -92,6 +92,9 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 			Manager: mgr.queries,
 		}},
 		QueryLog: func(qi proxy.QueryInfo) {
+			if qi.Error == nil && !qi.FromCache {
+				mgr.upstreamUsed.Store(true)
+			}
 			switch {
 			case qi.Error != nil && logQueryNames:
 				log.Printf("%-5s %s %s: %v", qi.Protocol, qi.UpstreamTransport, qi.Name, qi.Error)

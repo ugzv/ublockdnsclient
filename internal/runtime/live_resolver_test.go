@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"net"
+	"net/http/httptrace"
 	"os"
 	"runtime"
 	"strings"
@@ -70,6 +71,30 @@ func TestLiveResolverServesAndPurges(t *testing.T) {
 		t.Fatal("query after purge was still served from cache; rule updates would not take effect")
 	}
 	t.Log("purge cleared the cache; the next query went upstream")
+
+	connReused := func() bool {
+		var reused bool
+		traced := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+			GotConn: func(info httptrace.GotConnInfo) { reused = info.Reused },
+		})
+		if _, err := ep.Exchange(traced, dnsQueryPayload(0x1234, "example.com"), make([]byte, 4096)); err != nil {
+			t.Fatalf("exchange error = %v", err)
+		}
+		return reused
+	}
+	if !connReused() {
+		t.Fatal("repeat query did not report a reused connection; the refresh checks would prove nothing")
+	}
+	mgr.retireConnection(ctx)
+	if !connReused() {
+		t.Fatal("refresh without upstream queries retired the connection; an idle client would dial just to close it")
+	}
+	mgr.upstreamUsed.Store(true)
+	mgr.retireConnection(ctx)
+	if connReused() {
+		t.Fatal("query after the refresh reused the old connection; a degraded one would never be replaced")
+	}
+	t.Log("refresh retired the connection; the next query dialed a fresh one")
 }
 
 type resolveResult struct {

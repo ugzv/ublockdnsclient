@@ -120,3 +120,14 @@ func TestEndpointProbeRejectsInvalidAndFailedResponses(t *testing.T) {
 		})
 	}
 }
+
+func TestRetireConnectionWaitsForRunningTest(t *testing.T) {
+	m := newEndpointManager(&endpoint.DOHEndpoint{Hostname: "h", Path: "/p", Bootstrap: []string{"192.0.2.1"}})
+	m.testing = &endpointTest{done: make(chan struct{})}
+	m.upstreamUsed.Store(true)
+
+	m.retireConnection(context.Background())
+	if !m.upstreamUsed.Load() {
+		t.Fatal("refresh ran while a test was publishing a new selection; it could retire an endpoint the library has not adopted yet")
+	}
+}

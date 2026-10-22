@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,6 +18,8 @@ import (
 
 const dohProbeDomain = core.ProbeDomain
 const endpointProbeTimeout = time.Second
+
+const connectionRefreshInterval = 15 * time.Minute
 
 var fallbackDNSServers = []string{"1.1.1.1:53", "8.8.8.8:53", "9.9.9.9:53"}
 
@@ -34,6 +37,10 @@ type endpointManager struct {
 	selected  atomic.Pointer[endpointSelection]
 	mu        sync.Mutex
 	testing   *endpointTest
+
+	// upstreamUsed is set by queries answered upstream; without them the
+	// periodic refresh would dial a connection just to close it.
+	upstreamUsed atomic.Bool
 }
 
 func newEndpointManager(initial endpoint.Endpoint, providers ...endpoint.Provider) *endpointManager {
@@ -91,7 +98,11 @@ func (m *endpointManager) Test(ctx context.Context) error {
 			run.err = err
 			return err
 		}
-		previous := m.selected.Swap(&endpointSelection{chosen})
+		// The library keeps an Equal endpoint, so the selection must too.
+		previous := m.selected.Load()
+		if !previous.Equal(chosen) {
+			m.selected.Store(&endpointSelection{chosen})
+		}
 		if previous.Protocol() != chosen.Protocol() {
 			if chosen.Protocol() == endpoint.ProtocolDNS {
 				log.Printf("DNS recovery: using plaintext fallback; profile filtering is bypassed")
@@ -139,10 +150,13 @@ func (m *endpointManager) probe(ctx context.Context, candidates []endpoint.Endpo
 	return nil, lastErr
 }
 
-// While using a fallback, periodically try the preferred encrypted endpoint.
+// While using a fallback, periodically try the preferred encrypted endpoint;
+// while using DoH, periodically retire its connection.
 func (m *endpointManager) watch(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	refresh := time.NewTicker(connectionRefreshInterval)
+	defer refresh.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -151,7 +165,39 @@ func (m *endpointManager) watch(ctx context.Context) {
 			if m.selected.Load().Protocol() == endpoint.ProtocolDNS {
 				_ = m.Test(ctx)
 			}
+		case <-refresh.C:
+			m.retireConnection(ctx)
 		}
+	}
+}
+
+// retireConnection marks the connection serving DoH queries as not reusable,
+// so later queries dial a new one and the old one closes once idle. The
+// library keeps a connection that still answers, however slow, and exposes no
+// way to close it.
+func (m *endpointManager) retireConnection(ctx context.Context) {
+	// A running test may have published a selection the library has not
+	// adopted yet; wait for the next tick.
+	m.mu.Lock()
+	busy := m.testing != nil
+	selected := m.selected.Load()
+	m.mu.Unlock()
+	if busy || !m.upstreamUsed.Swap(false) {
+		return
+	}
+	doh, ok := selected.Endpoint.(*endpoint.DOHEndpoint)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, endpointProbeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, "https://"+doh.Hostname, nil)
+	if err != nil {
+		return
+	}
+	req.Close = true
+	if res, err := doh.RoundTrip(req); err == nil {
+		res.Body.Close()
 	}
 }
 
