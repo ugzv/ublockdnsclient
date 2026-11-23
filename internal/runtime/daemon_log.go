@@ -3,6 +3,7 @@ package runtime
 import (
 	"log"
 	"os"
+	"runtime"
 	"sync"
 
 	"github.com/nextdns/nextdns/host/service"
@@ -22,6 +23,13 @@ func setupDaemonLogging() {
 	// Under systemd stderr already lands in journald.
 	if os.Getenv("JOURNAL_STREAM") != "" {
 		return
+	}
+	// On Windows the log shares the state directory. It must be restricted
+	// before a SYSTEM service writes there, or not written at all.
+	if runtime.GOOS == "windows" {
+		if err := state.EnsureStateDir(); err != nil {
+			return
+		}
 	}
 	w := &rotatingWriter{path: state.DaemonLogPath()}
 	if w.openLocked() == nil {

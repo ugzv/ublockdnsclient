@@ -7,8 +7,10 @@ import (
 	"strings"
 )
 
-func ensureStateDir() error {
-	return os.MkdirAll(tokenDir(), 0o700)
+// EnsureStateDir creates the state directory, readable only by root, or by
+// SYSTEM and Administrators on Windows.
+func EnsureStateDir() error {
+	return secureStateDir(tokenDir())
 }
 
 func tokenDir() string {

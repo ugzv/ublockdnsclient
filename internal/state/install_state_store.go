@@ -24,7 +24,7 @@ func PersistInstallState(profileID, dohServer, apiServer string) error {
 	if strings.TrimSpace(profileID) == "" {
 		return nil
 	}
-	if err := ensureStateDir(); err != nil {
+	if err := EnsureStateDir(); err != nil {
 		return err
 	}
 	st := InstallState{

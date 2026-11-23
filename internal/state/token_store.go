@@ -20,7 +20,7 @@ func PersistToken(profileID, token string) error {
 	if strings.TrimSpace(token) == "" {
 		return nil
 	}
-	if err := ensureStateDir(); err != nil {
+	if err := EnsureStateDir(); err != nil {
 		return err
 	}
 	p, err := tokenPath(profileID)
