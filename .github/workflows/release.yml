@@ -6,16 +6,19 @@ on:
       - "v*"
   workflow_dispatch:
 
-permissions:
-  contents: write
+# Each job asks for what it needs. Actions are pinned to a commit, because a
+# moved tag on any of them could otherwise rewrite the release assets.
+permissions: {}
 
 jobs:
   goreleaser:
     runs-on: macos-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
@@ -23,18 +26,19 @@ jobs:
       # up-to-date stdlib security fixes; go.mod's directive stays the minimum
       # version required to build from source.
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: stable
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: "~> v2"
           args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean' || 'build --snapshot --clean' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+          # Snapshot builds sign nothing, so they do not get the key.
+          RELEASE_SIGNING_KEY: ${{ startsWith(github.ref, 'refs/tags/') && secrets.RELEASE_SIGNING_KEY || '' }}
           # Promoting a candidate means the final tag lands on the same commit
           # as its last rc. GoReleaser then has two tags to choose from and
           # picked the rc, trying to re-upload into a release that already had
@@ -45,39 +49,45 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
         run: |
           shasum -a 256 install.sh install.ps1 setup.ps1 > SCRIPT_SHA256SUMS
-          gh release upload "${{ github.ref_name }}" SCRIPT_SHA256SUMS --clobber
+          gh release upload "$TAG" SCRIPT_SHA256SUMS --clobber
 
+  # Builds the GUI installer with read-only access: this job runs a small
+  # third-party action, so it hands the result to the publish job below
+  # instead of writing to the release itself.
   windows-installer:
     needs: goreleaser
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
+      ARCH: ${{ matrix.arch }}
     strategy:
       matrix:
         arch: [amd64]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Download release assets
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $tag = "${{ github.ref_name }}"
-          $repo = "${{ github.repository }}"
-          $arch = "${{ matrix.arch }}"
-
           $assets = @(
-            "ublockdns-windows-$arch.exe",
+            "ublockdns-windows-${env:ARCH}.exe",
             "SHA256SUMS",
             "install.ps1",
             "setup.ps1"
           )
 
           foreach ($asset in $assets) {
-            $url = "https://github.com/$repo/releases/download/$tag/$asset"
+            $url = "https://github.com/${env:REPO}/releases/download/${env:TAG}/$asset"
             Write-Host "Downloading $url"
             Invoke-WebRequest -Uri $url -OutFile (Join-Path dist $asset)
           }
@@ -85,12 +95,12 @@ jobs:
       - name: Build GUI installer
         shell: pwsh
         run: |
-          Copy-Item "dist/ublockdns-windows-${{ matrix.arch }}.exe" "packaging/windows/ublockdns.exe" -Force
+          Copy-Item "dist/ublockdns-windows-${env:ARCH}.exe" "packaging/windows/ublockdns.exe" -Force
           Copy-Item "dist/install.ps1" "packaging/windows/install.ps1" -Force
           Copy-Item "dist/setup.ps1" "packaging/windows/setup.ps1" -Force
 
       - name: Compile GUI installer
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.6
+        uses: Minionguyjpro/Inno-Setup-Action@e3458b12721a98eee2112ea817d1a50467d6cbec # v1.2.6
         with:
           path: packaging/windows/ublockdns.iss
           options: /DMyAppVersion=${{ github.ref_name }}
@@ -99,22 +109,40 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          Move-Item "packaging/windows/uBlockDNS-Setup.exe" "out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe" -Force
+          Move-Item "packaging/windows/uBlockDNS-Setup.exe" "out/uBlockDNS-Setup-${env:TAG}-windows-${env:ARCH}.exe" -Force
 
       # SHA256SUMS is signed by the goreleaser job and must stay immutable,
       # so the GUI installer checksum goes in its own manifest.
       - name: Write GUI installer checksum
         shell: pwsh
         run: |
-          $gui = "out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe"
+          $gui = "out/uBlockDNS-Setup-${env:TAG}-windows-${env:ARCH}.exe"
           $hash = (Get-FileHash -Path $gui -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -Path "out/GUI_SHA256SUMS" -Value "$hash  $(Split-Path -Leaf $gui)"
 
-      - name: Upload GUI installer to release
-        uses: softprops/action-gh-release@v2
+      - name: Hand over GUI installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          files: |
-            out/uBlockDNS-Setup-${{ github.ref_name }}-windows-${{ matrix.arch }}.exe
-            out/GUI_SHA256SUMS
+          name: gui-installer
+          path: out/
+          if-no-files-found: error
+
+  publish-windows-installer:
+    needs: windows-installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Fetch GUI installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gui-installer
+          path: out
+
+      - name: Upload GUI installer to release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" out/* --clobber
