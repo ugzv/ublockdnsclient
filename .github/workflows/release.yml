@@ -145,4 +145,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: gh release upload "$TAG" out/* --clobber
+        # Name the files: the build job is not trusted to choose which release
+        # assets get replaced.
+        run: gh release upload "$TAG" "out/uBlockDNS-Setup-${TAG}-windows-amd64.exe" out/GUI_SHA256SUMS --clobber
