@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -22,6 +23,9 @@ var loadPersistedTokenFunc = state.LoadPersistedToken
 func resolveRuntimeConfig(profileID, overrideDoHServer, overrideAPIServer, accountToken string) (RuntimeConfig, error) {
 	dohServer := ResolveDoHServer(overrideDoHServer)
 	apiServer := ResolveAPIServer(overrideAPIServer)
+	if err := validateAPIServer(apiServer); err != nil {
+		return RuntimeConfig{}, err
+	}
 	token, err := resolveAccountToken(profileID, accountToken)
 	if err != nil {
 		return RuntimeConfig{}, err
@@ -48,6 +52,22 @@ func resolveAccountToken(profileID, accountToken string) (string, error) {
 		return "", nil
 	}
 	return persisted, nil
+}
+
+// validateAPIServer refuses plain HTTP except to this machine: the account
+// token is sent to the API server as a bearer header.
+func validateAPIServer(apiServer string) error {
+	u, err := url.Parse(apiServer)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("invalid API server URL %q: expected absolute URL", apiServer)
+	}
+	host := u.Hostname()
+	ip := net.ParseIP(host)
+	local := host == "localhost" || (ip != nil && ip.IsLoopback())
+	if u.Scheme == "https" || (u.Scheme == "http" && local) {
+		return nil
+	}
+	return fmt.Errorf("API server %q must use https", apiServer)
 }
 
 func ResolveDoHServer(overrideServer string) string {
