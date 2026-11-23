@@ -106,7 +106,7 @@ verify_manifest_signature() {
         warn "Release signature not checked: this needs OpenSSL 3 or later."
         return 0
     fi
-    printf '%s\n' "$RELEASE_PUBLIC_KEY" > "${TMP_DIR}/release.pub"
+    printf '%s\n' "$RELEASE_PUBLIC_KEY" > "${TMP_DIR}/release.pub" || return 1
     if ! openssl pkey -pubin -in "${TMP_DIR}/release.pub" -noout >/dev/null 2>&1; then
         warn "Release signature not checked: this openssl has no Ed25519 support."
         return 0
@@ -336,6 +336,11 @@ main() {
     # running this script.
     run_as_root mkdir -p "$INSTALL_DIR"
     run_as_root install -m 0755 -o 0 -g 0 "$TMP_BIN" "${INSTALL_DIR}/${BINARY}"
+    # Whoever can write to the directory can swap the file, whatever its owner.
+    if [ -z "$(find "$INSTALL_DIR" -prune -user 0 ! -perm -0020 ! -perm -0002 2>/dev/null)" ]; then
+        warn "${INSTALL_DIR} can be changed by accounts other than root."
+        warn "Those accounts can replace ${BINARY}, which runs as root."
+    fi
 
     # ── Register system service ──────────────────────────────
 
