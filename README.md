@@ -28,6 +28,8 @@ curl -sSfL https://ublockdns.com/install.sh | sh -s -- <profile-id>
 
 Use `-L` so curl follows Cloudflare redirects on the hosted install script.
 
+The binary is installed to `/usr/local/bin/ublockdns`. Where that directory can be changed by accounts other than root (Homebrew owns it on Intel Macs), the binary goes to `/opt/ublockdns` instead and `/usr/local/bin/ublockdns` is a link to it, so that only root can replace a program that runs as root.
+
 During installation, you may be prompted for your Mac or Linux administrator password to update system DNS settings.
 
 Verify installer script checksum (Linux):

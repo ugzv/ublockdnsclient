@@ -10,6 +10,9 @@ set -e
 REPO="ugzv/ublockdnsclient"
 BINARY="ublockdns"
 INSTALL_DIR="/usr/local/bin"
+# Used instead when INSTALL_DIR is not root-only; see install_binary.
+SERVICE_DIR="/opt/ublockdns"
+BIN_PATH=""
 TMP_DIR=""
 
 # Public half of the release signing key, the same key as releasePublicKeyHex
@@ -123,6 +126,46 @@ verify_manifest_signature() {
         -in "$sums" -sigfile "${TMP_DIR}/sums.sig.bin" >/dev/null 2>&1
 }
 
+# ── Binary placement ────────────────────────────────────────
+
+# True when a directory is owned by root and nobody else can write to it.
+dir_is_root_only() {
+    [ -n "$(find "$1" -prune -user 0 ! -perm -0020 ! -perm -0002 2>/dev/null)" ]
+}
+
+# Copies the binary to where the service will run it from and sets BIN_PATH.
+# The service runs as root, so the file must be root's: copied, not moved,
+# because a move keeps the downloading user as owner. Its directory must be
+# root's too, since whoever can write to a directory can swap the file in it.
+# Where INSTALL_DIR is not (Homebrew owns /usr/local/bin on Intel Macs), the
+# binary goes to SERVICE_DIR and INSTALL_DIR only gets a link to it.
+install_binary() {
+    src="$1"
+    run_as_root mkdir -p "$INSTALL_DIR"
+    if ! dir_is_root_only "$INSTALL_DIR" && prepare_service_dir; then
+        BIN_PATH="${SERVICE_DIR}/${BINARY}"
+        info "Installing to ${BIN_PATH} (linked from ${INSTALL_DIR})..."
+        run_as_root install -m 0755 -o 0 -g 0 "$src" "$BIN_PATH"
+        run_as_root ln -sf "$BIN_PATH" "${INSTALL_DIR}/${BINARY}"
+        return 0
+    fi
+    BIN_PATH="${INSTALL_DIR}/${BINARY}"
+    info "Installing to ${BIN_PATH}..."
+    run_as_root install -m 0755 -o 0 -g 0 "$src" "$BIN_PATH"
+    if ! dir_is_root_only "$INSTALL_DIR"; then
+        warn "${INSTALL_DIR} can be changed by accounts other than root."
+        warn "Those accounts can replace ${BINARY}, which runs as root."
+    fi
+}
+
+prepare_service_dir() {
+    run_as_root mkdir -p "$SERVICE_DIR" &&
+        run_as_root chown 0:0 "$SERVICE_DIR" &&
+        run_as_root chmod 0755 "$SERVICE_DIR" &&
+        dir_is_root_only "$SERVICE_DIR" &&
+        dir_is_root_only "$(dirname "$SERVICE_DIR")"
+}
+
 # ── DNS validation ──────────────────────────────────────────
 
 # Run a command silently, suppressing even shell-level crash messages
@@ -166,7 +209,7 @@ wait_for_dns() {
     fi
 
     warn "No direct DNS lookup tool found; falling back to client readiness check."
-    if READY_STATUS_JSON=$(run_as_root "${INSTALL_DIR}/${BINARY}" wait-ready -timeout 45s -json 2>/dev/null); then
+    if READY_STATUS_JSON=$(run_as_root "$BIN_PATH" wait-ready -timeout 45s -json 2>/dev/null); then
         success "uBlockDNS is ready."
         return 0
     fi
@@ -321,25 +364,14 @@ main() {
     fi
     success "Checksum verified for ${ASSET_NAME}."
 
-    # ── Stop existing service ────────────────────────────────
+    # ── Install binary, then stop the existing service ───────
 
+    # The new copy does the stopping: an older installer left the existing
+    # file writable by the user, so it should not be run as root again.
+    install_binary "$TMP_BIN"
     if [ -n "$EXISTING" ]; then
         info "Stopping existing service..."
-        run_as_root "${INSTALL_DIR}/${BINARY}" stop 2>/dev/null || true
-    fi
-
-    # ── Install binary ───────────────────────────────────────
-
-    info "Installing to ${INSTALL_DIR}/${BINARY}..."
-    # The service runs this file as root, so root must own it. Moving the
-    # download into place would keep it owned by, and writable for, the user
-    # running this script.
-    run_as_root mkdir -p "$INSTALL_DIR"
-    run_as_root install -m 0755 -o 0 -g 0 "$TMP_BIN" "${INSTALL_DIR}/${BINARY}"
-    # Whoever can write to the directory can swap the file, whatever its owner.
-    if [ -z "$(find "$INSTALL_DIR" -prune -user 0 ! -perm -0020 ! -perm -0002 2>/dev/null)" ]; then
-        warn "${INSTALL_DIR} can be changed by accounts other than root."
-        warn "Those accounts can replace ${BINARY}, which runs as root."
+        run_as_root "$BIN_PATH" stop 2>/dev/null || true
     fi
 
     # ── Register system service ──────────────────────────────
@@ -357,7 +389,7 @@ main() {
         set -- "$@" -token-file "$TMP_TOKEN"
     fi
 
-    if ! run_as_root "${INSTALL_DIR}/${BINARY}" "$@"; then
+    if ! run_as_root "$BIN_PATH" "$@"; then
         error "Service installation failed."
         [ -n "$EXISTING" ] && warn "Tip: run 'sudo ublockdns uninstall' first, then retry."
         exit 1
@@ -371,7 +403,7 @@ main() {
         if [ -n "$READY_STATUS_JSON" ]; then
             printf '%s\n' "$READY_STATUS_JSON"
         else
-            run_as_root "${INSTALL_DIR}/${BINARY}" status -json || true
+            run_as_root "$BIN_PATH" status -json || true
         fi
         printf "  Check:     ${BOLD}ublockdns status${RESET}\n"
         printf "  Uninstall: ${BOLD}sudo ublockdns uninstall${RESET}\n"
@@ -393,4 +425,5 @@ main() {
     printf "\n"
 }
 
-main "$@"
+# Tests source this file for its functions.
+[ -n "${UBLOCKDNS_INSTALL_SOURCED:-}" ] || main "$@"

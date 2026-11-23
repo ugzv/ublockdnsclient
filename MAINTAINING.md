@@ -56,6 +56,10 @@
 - Unix token path: `/etc/ublockdns`.
 - Release builds are managed by GoReleaser (`.goreleaser.yml`).
 
+## Unix Installer
+
+`scripts/test-install-sh.sh` tests where `install.sh` puts the binary and how it checks the release signature. It needs root because it assigns file ownership: `sudo sh scripts/test-install-sh.sh`, or run it in a throwaway container. CI runs it on Linux and macOS.
+
 ## Windows Installer Helpers
 
 Edit shared PowerShell helpers in `scripts/windows/common.ps1`, then run

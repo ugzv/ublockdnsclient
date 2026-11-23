@@ -33,6 +33,12 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # Run natively on both: the installer relies on install(1), find(1) and
+      # openssl, which differ between GNU and BSD userlands.
+      - name: Unix installer tests
+        if: runner.os != 'Windows'
+        run: sudo sh scripts/test-install-sh.sh
+
       - name: Windows installer regression tests
         if: runner.os == 'Windows'
         shell: powershell
@@ -84,7 +90,7 @@ jobs:
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Shellcheck install.sh
-        run: shellcheck -S warning install.sh
+        run: shellcheck -S warning install.sh scripts/test-install-sh.sh
 
       - name: Parse PowerShell scripts
         shell: pwsh
