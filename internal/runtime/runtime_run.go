@@ -62,9 +62,18 @@ func Run(version, profileID, overrideServer, overrideAPIServer, accountToken str
 	var dohEp atomic.Pointer[endpoint.DOHEndpoint]
 	dohEp.Store(dohEndpoint)
 
-	mgr := newEndpointManager(dohEndpoint, endpoint.ProviderFunc(func(context.Context) ([]endpoint.Endpoint, error) {
+	providers := []endpoint.Provider{endpoint.ProviderFunc(func(context.Context) ([]endpoint.Endpoint, error) {
 		return []endpoint.Endpoint{dohEp.Load()}, nil
-	}), newFallbackDNSProvider(runtime.GOOS, discoverDNSServers))
+	})}
+	// The plaintext fallback keeps DNS working when the encrypted resolver is
+	// unreachable, which also lets anyone who can block that resolver read
+	// and answer queries. Opting out makes lookups fail instead.
+	if os.Getenv("UBLOCKDNS_NO_PLAINTEXT_FALLBACK") == "1" {
+		log.Println("Plaintext DNS fallback disabled by UBLOCKDNS_NO_PLAINTEXT_FALLBACK")
+	} else {
+		providers = append(providers, newFallbackDNSProvider(runtime.GOOS, discoverDNSServers))
+	}
+	mgr := newEndpointManager(dohEndpoint, providers...)
 
 	// Client-side DNS response cache. Avoids upstream round-trips for
 	// frequently queried domains. Purged on rule updates via SSE so that

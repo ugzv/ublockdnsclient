@@ -117,6 +117,8 @@ Manage your filter lists, custom rules, and query log from the [dashboard](https
 
 The client runs a local DNS proxy on `127.0.0.1:53` and, when IPv6 is available, `[::1]:53`. It forwards all queries to the uBlockDNS service over encrypted DNS-over-HTTPS. The service evaluates each query against the filter lists and custom rules enabled for your profile, then returns either the normal DNS answer or a block response.
 
+If the encrypted connection cannot be reached, the client falls back to plain DNS on your network's resolvers or public ones, so the device stays online; filtering is bypassed until the connection returns. To make lookups fail instead, set `UBLOCKDNS_NO_PLAINTEXT_FALLBACK=1` in the service environment.
+
 When you update filter lists or custom rules in the dashboard, the client receives those changes in real time and flushes the local DNS cache automatically so new decisions take effect quickly.
 
 ## Build from source
