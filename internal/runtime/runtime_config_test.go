@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"testing"
+
+	"github.com/ugzv/ublockdnsclient/internal/core"
 )
 
 func TestResolveAccountTokenIgnoresPersistedTokenLoadErrors(t *testing.T) {
@@ -60,7 +62,7 @@ func TestAPIServerRequiresHTTPSOffLoopback(t *testing.T) {
 		"ftp://ublockdns.com":      false,
 		"ublockdns.com":            false,
 	} {
-		if err := ValidateAPIServer(server); (err == nil) != wantOK {
+		if err := core.ValidateAPIServer(server); (err == nil) != wantOK {
 			t.Errorf("ValidateAPIServer(%q) error = %v, want ok = %v", server, err, wantOK)
 		}
 	}

@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ugzv/ublockdnsclient/internal/core"
 )
 
 var (
@@ -45,6 +47,11 @@ func LatestVersion(apiServer string) (string, error) {
 func versionFromAPI(apiServer string) (string, error) {
 	if strings.TrimSpace(apiServer) == "" {
 		return "", errors.New("no API server configured")
+	}
+	// Over plain HTTP anyone on the network could answer with an old version
+	// and hold updates back; the caller falls back to GitHub.
+	if err := core.ValidateAPIServer(apiServer); err != nil {
+		return "", err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/ugzv/ublockdnsclient/internal/core"
 )
 
 // rulesHTTPClient is used for all rules API requests. It sets transport-level
@@ -22,7 +24,7 @@ var rulesHTTPClient = &http.Client{
 		if len(via) >= 10 {
 			return errors.New("stopped after 10 redirects")
 		}
-		return ValidateAPIServer(req.URL.String())
+		return core.ValidateAPIServer(req.URL.String())
 	},
 	Transport: &http.Transport{
 		// Plain HTTP is only ever this machine (see ValidateAPIServer), and a

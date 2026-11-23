@@ -3,7 +3,6 @@ package runtime
 import (
 	"fmt"
 	"log"
-	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -31,7 +30,7 @@ func resolveRuntimeConfig(profileID, overrideDoHServer, overrideAPIServer, accou
 	// Keep the daemon up for a service installed before this check existed;
 	// only the token stays home.
 	if token != "" {
-		if err := ValidateAPIServer(apiServer); err != nil {
+		if err := core.ValidateAPIServer(apiServer); err != nil {
 			log.Printf("Rules update stream disabled: %v", err)
 			token = ""
 		}
@@ -58,22 +57,6 @@ func resolveAccountToken(profileID, accountToken string) (string, error) {
 		return "", nil
 	}
 	return persisted, nil
-}
-
-// ValidateAPIServer refuses plain HTTP except to this machine: the account
-// token is sent to the API server as a bearer header.
-func ValidateAPIServer(apiServer string) error {
-	u, err := url.Parse(apiServer)
-	if err != nil || u.Host == "" {
-		return fmt.Errorf("invalid API server URL %q: expected absolute URL", apiServer)
-	}
-	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-	ip := net.ParseIP(host)
-	local := host == "localhost" || (ip != nil && ip.IsLoopback())
-	if u.Scheme == "https" || (u.Scheme == "http" && local) {
-		return nil
-	}
-	return fmt.Errorf("API server %q must use https", apiServer)
 }
 
 func ResolveDoHServer(overrideServer string) string {
