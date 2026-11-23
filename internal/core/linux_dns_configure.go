@@ -3,10 +3,12 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 // ConfigureLinuxSystemDNS applies durable Linux DNS settings for new installs.
@@ -18,47 +20,66 @@ func ConfigureLinuxSystemDNS() error {
 	}
 
 	manager := detectLinuxDNSManager()
-	if err := applyLinuxDNSManagerConfigure(paths, manager); err != nil {
+	changed, err := applyLinuxDNSManagerConfigure(paths, manager)
+	if err != nil {
 		return err
 	}
 	if err := writeManagedResolvConf(paths); err != nil {
 		return err
 	}
-	return restartLinuxDNSManagerAfterConfigure(manager)
+	if changed {
+		reloadLinuxDNSManagerAfterConfigure(manager)
+	}
+	return nil
 }
 
-func applyLinuxDNSManagerConfigure(paths linuxDNSPaths, manager string) error {
+// applyLinuxDNSManagerConfigure writes the manager's config and reports whether
+// it changed. This runs on every network change, so an unchanged config must
+// not bounce the manager: bouncing it is itself a network change.
+func applyLinuxDNSManagerConfigure(paths linuxDNSPaths, manager string) (bool, error) {
 	switch manager {
 	case "systemd-resolved":
-		if err := writeResolvedDropIn(paths); err != nil {
-			return err
+		changed, err := writeResolvedDropIn(paths)
+		if err != nil || !changed {
+			return false, err
 		}
-		return RunCommand("systemctl", "restart", "systemd-resolved")
+		return false, RunCommand("systemctl", "restart", "systemd-resolved")
 	case "networkmanager":
 		return writeNetworkManagerDropIn(paths)
 	case "connman":
 		return configureConnman(paths)
 	case "dhclient":
-		return configureDhclient(paths)
+		return false, configureDhclient(paths)
 	case "resolvconf":
-		return configureResolvconf(paths)
+		return false, configureResolvconf(paths)
 	default:
-		return nil
+		return false, nil
 	}
 }
 
-func restartLinuxDNSManagerAfterConfigure(manager string) error {
+func reloadLinuxDNSManagerAfterConfigure(manager string) {
 	switch manager {
 	case "networkmanager":
-		if err := RunCommand("systemctl", "restart", "NetworkManager"); err != nil {
-			log.Printf("Warning: restart NetworkManager: %v", err)
+		// A reload applies dns=none without dropping the connection.
+		if err := RunCommand("systemctl", "reload", "NetworkManager"); err != nil {
+			log.Printf("Warning: reload NetworkManager, restarting instead: %v", err)
+			if err := RunCommand("systemctl", "restart", "NetworkManager"); err != nil {
+				log.Printf("Warning: restart NetworkManager: %v", err)
+			}
 		}
 	case "connman":
 		if err := RunCommand("systemctl", "restart", "connman"); err != nil {
 			log.Printf("Warning: restart connman: %v", err)
 		}
 	}
-	return nil
+}
+
+// writeFileIfChanged writes content and reports whether the file differed.
+func writeFileIfChanged(path string, content []byte) (bool, error) {
+	if data, err := os.ReadFile(path); err == nil && bytes.Equal(data, content) {
+		return false, nil
+	}
+	return true, os.WriteFile(path, content, 0o644)
 }
 
 func detectLinuxDNSManager() string {
@@ -127,15 +148,23 @@ func backupResolvConf(paths linuxDNSPaths) error {
 }
 
 func writeManagedResolvConf(paths linuxDNSPaths) error {
-	unlockResolvConf(paths)
+	content := "# " + managedResolvMarker + " — do not edit\nnameserver 127.0.0.1\n"
 
-	if info, err := os.Lstat(paths.ResolvConf); err == nil && info.Mode()&os.ModeSymlink != 0 {
+	info, err := os.Lstat(paths.ResolvConf)
+	isSymlink := err == nil && info.Mode()&os.ModeSymlink != 0
+	if !isSymlink {
+		if data, err := os.ReadFile(paths.ResolvConf); err == nil && string(data) == content {
+			return nil
+		}
+	}
+
+	unlockResolvConf(paths)
+	if isSymlink {
 		if err := os.Remove(paths.ResolvConf); err != nil {
 			return err
 		}
 	}
 
-	content := "# " + managedResolvMarker + " — do not edit\nnameserver 127.0.0.1\n"
 	if err := os.WriteFile(paths.ResolvConf, []byte(content), 0o644); err != nil {
 		return err
 	}
@@ -146,38 +175,42 @@ func writeManagedResolvConf(paths linuxDNSPaths) error {
 	return nil
 }
 
-func writeResolvedDropIn(paths linuxDNSPaths) error {
-	if err := os.MkdirAll("/etc/systemd/resolved.conf.d", 0o755); err != nil {
-		return err
+func writeResolvedDropIn(paths linuxDNSPaths) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(paths.ResolvedDropIn), 0o755); err != nil {
+		return false, err
 	}
-	content := "[Resolve]\nDNS=127.0.0.1\nDNSStubListener=no\n"
-	return os.WriteFile(paths.ResolvedDropIn, []byte(content), 0o644)
+	// Domains=~. routes every lookup to the proxy. Without it, programs that
+	// resolve through systemd-resolved also ask the link's own DNS server and
+	// blocked names leak through.
+	content := "[Resolve]\nDNS=127.0.0.1\nDomains=~.\nDNSStubListener=no\n"
+	return writeFileIfChanged(paths.ResolvedDropIn, []byte(content))
 }
 
-func writeNetworkManagerDropIn(paths linuxDNSPaths) error {
-	if err := os.MkdirAll("/etc/NetworkManager/conf.d", 0o755); err != nil {
-		return err
+func writeNetworkManagerDropIn(paths linuxDNSPaths) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(paths.NMUBlockDNSConf), 0o755); err != nil {
+		return false, err
 	}
-	return os.WriteFile(paths.NMUBlockDNSConf, []byte("[main]\ndns=none\n"), 0o644)
+	return writeFileIfChanged(paths.NMUBlockDNSConf, []byte("[main]\ndns=none\n"))
 }
 
-func configureConnman(paths linuxDNSPaths) error {
+// configureConnman reports whether main.conf changed.
+func configureConnman(paths linuxDNSPaths) (bool, error) {
 	content := "[General]\n" + managedConfigMarker + "\nDNSProxy=none\n"
 	data, err := os.ReadFile(paths.ConnmanMainConf)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return os.WriteFile(paths.ConnmanMainConf, []byte(content), 0o644)
+			return true, os.WriteFile(paths.ConnmanMainConf, []byte(content), 0o644)
 		}
-		return err
+		return false, err
 	}
 	if string(data) == "" {
-		return os.WriteFile(paths.ConnmanMainConf, []byte(content), 0o644)
+		return true, os.WriteFile(paths.ConnmanMainConf, []byte(content), 0o644)
 	}
 	if containsLine(data, "DNSProxy=none") {
-		return nil
+		return false, nil
 	}
 	if err := backupConnmanMainConf(paths); err != nil {
-		return err
+		return false, err
 	}
 	if containsLine(data, "[General]") {
 		lines := splitLines(data)
@@ -193,9 +226,9 @@ func configureConnman(paths linuxDNSPaths) error {
 		if !inserted {
 			out = append(out, managedConfigMarker, "DNSProxy=none")
 		}
-		return os.WriteFile(paths.ConnmanMainConf, []byte(joinLines(out)), 0o644)
+		return true, os.WriteFile(paths.ConnmanMainConf, []byte(joinLines(out)), 0o644)
 	}
-	return os.WriteFile(paths.ConnmanMainConf, append(append(data, '\n'), []byte("[General]\n"+managedConfigMarker+"\nDNSProxy=none\n")...), 0o644)
+	return true, os.WriteFile(paths.ConnmanMainConf, append(append(data, '\n'), []byte("[General]\n"+managedConfigMarker+"\nDNSProxy=none\n")...), 0o644)
 }
 
 func backupConnmanMainConf(paths linuxDNSPaths) error {

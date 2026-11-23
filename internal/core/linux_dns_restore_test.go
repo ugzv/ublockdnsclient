@@ -154,7 +154,7 @@ func TestRestoreConnmanConfigPreservesPreExistingDNSProxy(t *testing.T) {
 		t.Fatalf("write connman conf: %v", err)
 	}
 
-	if err := configureConnman(paths); err != nil {
+	if _, err := configureConnman(paths); err != nil {
 		t.Fatalf("configureConnman() error = %v", err)
 	}
 
@@ -187,7 +187,7 @@ func TestRestoreConnmanConfigRestoresBackup(t *testing.T) {
 		t.Fatalf("write connman conf: %v", err)
 	}
 
-	if err := configureConnman(paths); err != nil {
+	if _, err := configureConnman(paths); err != nil {
 		t.Fatalf("configureConnman() error = %v", err)
 	}
 
@@ -326,5 +326,45 @@ func TestRestoreResolvConfFromSymlinkBackup(t *testing.T) {
 	}
 	if link != target {
 		t.Fatalf("restored symlink target = %q, want %q", link, target)
+	}
+}
+
+// Re-activation runs on every network change. Restarting NetworkManager there
+// drops Wi-Fi, which is itself a network change (ublockdnsclient#131).
+func TestConfigureReloadsNetworkManagerOnlyWhenConfigChanges(t *testing.T) {
+	paths := testLinuxDNSPaths(t, t.TempDir())
+	t.Setenv("PATH", "")
+
+	var managerCommands []string
+	t.Cleanup(SwapCommandRunner(func(name string, args ...string) error {
+		if name != "systemctl" || len(args) < 2 {
+			return nil
+		}
+		if args[0] == "is-active" {
+			if args[len(args)-1] == "NetworkManager" {
+				return nil
+			}
+			return errors.New("inactive")
+		}
+		managerCommands = append(managerCommands, args[0]+" "+args[1])
+		return nil
+	}))
+
+	if err := ConfigureLinuxSystemDNS(); err != nil {
+		t.Fatalf("first ConfigureLinuxSystemDNS() error = %v", err)
+	}
+	if len(managerCommands) != 1 || managerCommands[0] != "reload NetworkManager" {
+		t.Fatalf("first activation ran %v, want one NetworkManager reload", managerCommands)
+	}
+	if _, err := os.Stat(paths.NMUBlockDNSConf); err != nil {
+		t.Fatalf("NetworkManager drop-in missing: %v", err)
+	}
+
+	managerCommands = nil
+	if err := ConfigureLinuxSystemDNS(); err != nil {
+		t.Fatalf("second ConfigureLinuxSystemDNS() error = %v", err)
+	}
+	if len(managerCommands) != 0 {
+		t.Fatalf("unchanged re-activation ran %v, want no manager commands", managerCommands)
 	}
 }
