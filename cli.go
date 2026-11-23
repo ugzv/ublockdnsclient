@@ -72,6 +72,10 @@ func main() {
 
 	case "install":
 		args := mustParseProfileArgs()
+		// Checked before anything is stopped or replaced.
+		if err := app_runtime.ValidateAPIServer(app_runtime.ResolveAPIServer(args.apiServer)); err != nil {
+			log.Fatalf("Install failed: %v", err)
+		}
 		fmt.Println("Installing uBlockDNS service...")
 		outcome, err := service.InstallDetailed(args.profileID, args.dohServer, args.apiServer, args.token)
 		if err != nil {

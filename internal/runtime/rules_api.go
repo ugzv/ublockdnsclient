@@ -3,10 +3,11 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -15,8 +16,23 @@ import (
 // timeouts so that a half-open TCP connection (server crash without FIN) does
 // not cause the SSE goroutine to hang indefinitely.
 var rulesHTTPClient = &http.Client{
+	// Requests carry the account token, and Go keeps it on a redirect to the
+	// same host even when that redirect drops to plain HTTP.
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return ValidateAPIServer(req.URL.String())
+	},
 	Transport: &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
+		// Plain HTTP is only ever this machine (see ValidateAPIServer), and a
+		// proxy would carry the token off it.
+		Proxy: func(req *http.Request) (*url.URL, error) {
+			if req.URL.Scheme != "https" {
+				return nil, nil
+			}
+			return http.ProxyFromEnvironment(req)
+		},
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -54,7 +70,7 @@ func fetchRulesVersion(ctx context.Context, apiServer, profileID, accountToken s
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return out, err
 	}
 	return out, nil

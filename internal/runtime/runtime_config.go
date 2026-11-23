@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"os"
@@ -23,12 +24,17 @@ var loadPersistedTokenFunc = state.LoadPersistedToken
 func resolveRuntimeConfig(profileID, overrideDoHServer, overrideAPIServer, accountToken string) (RuntimeConfig, error) {
 	dohServer := ResolveDoHServer(overrideDoHServer)
 	apiServer := ResolveAPIServer(overrideAPIServer)
-	if err := validateAPIServer(apiServer); err != nil {
-		return RuntimeConfig{}, err
-	}
 	token, err := resolveAccountToken(profileID, accountToken)
 	if err != nil {
 		return RuntimeConfig{}, err
+	}
+	// Keep the daemon up for a service installed before this check existed;
+	// only the token stays home.
+	if token != "" {
+		if err := ValidateAPIServer(apiServer); err != nil {
+			log.Printf("Rules update stream disabled: %v", err)
+			token = ""
+		}
 	}
 	return RuntimeConfig{
 		ProfileID:    profileID,
@@ -54,14 +60,14 @@ func resolveAccountToken(profileID, accountToken string) (string, error) {
 	return persisted, nil
 }
 
-// validateAPIServer refuses plain HTTP except to this machine: the account
+// ValidateAPIServer refuses plain HTTP except to this machine: the account
 // token is sent to the API server as a bearer header.
-func validateAPIServer(apiServer string) error {
+func ValidateAPIServer(apiServer string) error {
 	u, err := url.Parse(apiServer)
 	if err != nil || u.Host == "" {
 		return fmt.Errorf("invalid API server URL %q: expected absolute URL", apiServer)
 	}
-	host := u.Hostname()
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
 	ip := net.ParseIP(host)
 	local := host == "localhost" || (ip != nil && ip.IsLoopback())
 	if u.Scheme == "https" || (u.Scheme == "http" && local) {
