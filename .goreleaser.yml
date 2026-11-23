@@ -51,10 +51,20 @@ archives:
 checksum:
   name_template: SHA256SUMS
 
+# Two signatures over the checksum manifest. ".vsig" also covers the release
+# version and is what current clients verify. ".sig" covers the manifest alone
+# and stays published so clients released before ".vsig" can still update.
 signs:
-  - cmd: go
+  - id: checksum
+    cmd: go
     args: ["run", "./scripts/sign", "-in", "${artifact}", "-out", "${signature}"]
     signature: "${artifact}.sig"
+    artifacts: checksum
+
+  - id: checksum-version
+    cmd: go
+    args: ["run", "./scripts/sign", "-in", "${artifact}", "-out", "${signature}", "-version", "{{ .Version }}"]
+    signature: "${artifact}.vsig"
     artifacts: checksum
 
 release:

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -51,6 +52,17 @@ func TestHashFor(t *testing.T) {
 // swaps the package globals to point at it.
 func fakeRelease(t *testing.T, version string, binary []byte) {
 	t.Helper()
+	fakeReleaseSignedFor(t, version, version, binary)
+}
+
+// fakeReleaseSignedFor publishes a release under version whose manifest
+// signature was made for signedVersion.
+func fakeReleaseSignedFor(t *testing.T, version, signedVersion string, binary []byte) {
+	t.Helper()
+	oldSmoke := smokeTestFunc
+	smokeTestFunc = func(string, string) error { return nil }
+	t.Cleanup(func() { smokeTestFunc = oldSmoke })
+
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +73,7 @@ func fakeRelease(t *testing.T, version string, binary []byte) {
 
 	sum := sha256.Sum256(binary)
 	sums := fmt.Sprintf("%s  %s\n", hex.EncodeToString(sum[:]), assetName())
-	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, []byte(sums)))
+	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(priv, VersionedManifest(signedVersion, []byte(sums))))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/latest", func(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +82,7 @@ func fakeRelease(t *testing.T, version string, binary []byte) {
 	mux.HandleFunc("/download/v"+version+"/SHA256SUMS", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sums))
 	})
-	mux.HandleFunc("/download/v"+version+"/SHA256SUMS.sig", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/download/v"+version+"/"+manifestSignatureName, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(sig))
 	})
 	mux.HandleFunc("/download/v"+version+"/"+assetName(), func(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +155,35 @@ func TestApplyRejectsBadSignature(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(exe); string(b) != "old-binary" {
 		t.Fatal("binary must be untouched on signature failure")
+	}
+}
+
+// A release host without the signing key must not be able to republish an old
+// signed manifest under a new tag to walk clients back to a vulnerable build.
+func TestApplyRejectsManifestSignedForAnotherVersion(t *testing.T) {
+	fakeReleaseSignedFor(t, "3.0.0", "2.0.0", []byte("old-release-binary"))
+	exe := fakeExecutable(t, "old-binary")
+
+	if _, err := Apply("1.0.0", ""); err == nil {
+		t.Fatal("expected a manifest signed for another version to be refused")
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "old-binary" {
+		t.Fatal("binary must be untouched when the manifest is for another version")
+	}
+}
+
+// A release that cannot start must not replace the working binary: the
+// daemon would exit into it with system DNS still pointing at loopback.
+func TestApplyKeepsCurrentBinaryWhenNewOneFailsToRun(t *testing.T) {
+	fakeRelease(t, "2.0.0", []byte("new-binary"))
+	exe := fakeExecutable(t, "old-binary")
+	smokeTestFunc = func(string, string) error { return errors.New("exec format error") }
+
+	if _, err := Apply("1.0.0", ""); err == nil {
+		t.Fatal("expected failure when the downloaded binary does not run")
+	}
+	if b, _ := os.ReadFile(exe); string(b) != "old-binary" {
+		t.Fatal("binary must be untouched when the new one fails its smoke test")
 	}
 }
 

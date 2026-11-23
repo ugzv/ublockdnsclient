@@ -16,6 +16,9 @@
    - `uBlockDNS-Setup-vX.Y.Z-windows-amd64.exe`
    - `ublockdns-freebsd-amd64`
    - `SHA256SUMS`
+   - `SHA256SUMS.sig` (signature over the manifest; read by `install.sh` and by clients released before `.vsig`)
+   - `SHA256SUMS.vsig` (signature over the manifest and the version; required by current clients to update)
+   - `GUI_SHA256SUMS`
    - `SCRIPT_SHA256SUMS`
    - `install.sh`
    - `install.ps1`

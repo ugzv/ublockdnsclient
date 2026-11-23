@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -20,6 +21,7 @@ var (
 	releaseBaseURL     = "https://github.com/ugzv/ublockdnsclient/releases"
 	httpClient         = &http.Client{Timeout: 5 * time.Minute}
 	executablePathFunc = defaultExecutablePath
+	smokeTestFunc      = smokeTest
 )
 
 func defaultExecutablePath() (string, error) {
@@ -204,7 +206,8 @@ func atoiNonNegative(s string) (int, bool) {
 }
 
 // Apply replaces the current executable with the latest release when one is
-// newer than currentVersion, after verifying the signed checksum manifest.
+// newer than currentVersion, after verifying the checksum manifest signed for
+// that version and checking that the new binary runs.
 // The previous binary is kept alongside as ".old". Returns the applied
 // version, or "" when already up to date.
 func Apply(currentVersion, apiServer string) (string, error) {
@@ -227,11 +230,11 @@ func Apply(currentVersion, apiServer string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("fetch checksums: %w", err)
 	}
-	sig, err := fetch(base + "/SHA256SUMS.sig")
+	sig, err := fetch(base + "/" + manifestSignatureName)
 	if err != nil {
 		return "", fmt.Errorf("fetch checksum signature: %w", err)
 	}
-	if err := verifySignature(sums, sig); err != nil {
+	if err := verifySignature(VersionedManifest(latest, sums), sig); err != nil {
 		return "", fmt.Errorf("checksum signature: %w", err)
 	}
 	wantHash, err := hashFor(sums, asset)
@@ -254,6 +257,9 @@ func Apply(currentVersion, apiServer string) (string, error) {
 	if err := os.Chmod(newPath, 0o755); err != nil {
 		return "", err
 	}
+	if err := smokeTestFunc(newPath, latest); err != nil {
+		return "", fmt.Errorf("new binary failed to run: %w", err)
+	}
 
 	oldPath := exe + ".old"
 	_ = os.Remove(oldPath)
@@ -265,6 +271,22 @@ func Apply(currentVersion, apiServer string) (string, error) {
 		return "", fmt.Errorf("install new binary: %w", err)
 	}
 	return latest, nil
+}
+
+// smokeTest runs the downloaded binary's "version" command and checks it
+// reports the release it was downloaded as.
+func smokeTest(path, version string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "version").Output()
+	if err != nil {
+		return err
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 || fields[len(fields)-1] != "v"+version {
+		return fmt.Errorf("reports %q, want v%s", strings.TrimSpace(string(out)), version)
+	}
+	return nil
 }
 
 func assetName() string {

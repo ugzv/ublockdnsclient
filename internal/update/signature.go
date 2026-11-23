@@ -22,6 +22,18 @@ func mustDecodePublicKey(h string) ed25519.PublicKey {
 	return ed25519.PublicKey(b)
 }
 
+// manifestSignatureName is the release asset holding the signature over
+// VersionedManifest. "SHA256SUMS.sig", over the bare manifest, is still
+// published for clients released before the version was signed.
+const manifestSignatureName = "SHA256SUMS.vsig"
+
+// VersionedManifest is the signed payload: the checksum manifest prefixed with
+// the release it belongs to. Asset names repeat across releases, so a
+// signature over the manifest alone would stay valid under any other tag.
+func VersionedManifest(version string, sums []byte) []byte {
+	return append([]byte("ublockdns v"+strings.TrimPrefix(version, "v")+"\n"), sums...)
+}
+
 func verifySignature(payload, sigB64 []byte) error {
 	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sigB64)))
 	if err != nil {
