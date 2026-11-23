@@ -27,7 +27,7 @@ func PersistToken(profileID, token string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, []byte(strings.TrimSpace(token)), 0o600)
+	return writeFileFresh(p, []byte(strings.TrimSpace(token)))
 }
 
 func LoadPersistedToken(profileID string) (string, error) {

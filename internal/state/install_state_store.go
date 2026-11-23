@@ -61,7 +61,28 @@ func writeStateFile(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	return writeFileFresh(path, data)
+}
+
+// writeFileFresh replaces path with a newly created file instead of writing
+// into the existing one, so a handle someone opened on the old file earlier
+// never sees the new content. The temporary file is created 0600.
+func writeFileFresh(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.Write(data)
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(tmp.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(tmp.Name())
+	}
+	return err
 }
 
 func readStateFile(path string, value any) error {
