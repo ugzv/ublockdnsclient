@@ -10,9 +10,13 @@ set -e
 REPO="ugzv/ublockdnsclient"
 BINARY="ublockdns"
 INSTALL_DIR="/usr/local/bin"
-TMP_BIN=""
-TMP_SUMS=""
-TMP_TOKEN=""
+TMP_DIR=""
+
+# Public half of the release signing key, the same key as releasePublicKeyHex
+# in internal/update/signature.go.
+RELEASE_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAqE92Bm8K4PXTUvdgDnjgdVd2v7kgGQ0PllYYr6pG8YI=
+-----END PUBLIC KEY-----"
 READY_STATUS_JSON=""
 
 # ── Terminal colors ──────────────────────────────────────────
@@ -38,9 +42,7 @@ has()         { command -v "$1" >/dev/null 2>&1; }
 run_as_root() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 
 cleanup() {
-    [ -n "$TMP_BIN" ] && [ -f "$TMP_BIN" ] && rm -f "$TMP_BIN"
-    [ -n "$TMP_SUMS" ] && [ -f "$TMP_SUMS" ] && rm -f "$TMP_SUMS"
-    [ -n "$TMP_TOKEN" ] && [ -f "$TMP_TOKEN" ] && rm -f "$TMP_TOKEN"
+    [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ] && rm -rf "$TMP_DIR"
     return 0
 }
 
@@ -90,6 +92,35 @@ verify_sha256() {
     fi
 
     [ "$actual" = "$expected" ]
+}
+
+# Checks the release signature on the checksum manifest. The checksum alone
+# only proves the binary matches a manifest from the same download location.
+# Ed25519 needs OpenSSL 3; where the local openssl cannot do it (LibreSSL on
+# macOS, or no openssl at all) the check is skipped with a notice, and a
+# signature that is checked and wrong always fails the install.
+verify_manifest_signature() {
+    sums="$1" sig_url="$2"
+
+    if ! has openssl || ! openssl pkeyutl -help 2>&1 | grep -q -- '-rawin'; then
+        warn "Release signature not checked: this needs OpenSSL 3 or later."
+        return 0
+    fi
+    printf '%s\n' "$RELEASE_PUBLIC_KEY" > "${TMP_DIR}/release.pub"
+    if ! openssl pkey -pubin -in "${TMP_DIR}/release.pub" -noout >/dev/null 2>&1; then
+        warn "Release signature not checked: this openssl has no Ed25519 support."
+        return 0
+    fi
+
+    if ! download "$sig_url" "${TMP_DIR}/sums.sig" "SHA256SUMS.sig"; then
+        error "Download failed: ${sig_url}"
+        return 1
+    fi
+    if ! openssl base64 -d -A -in "${TMP_DIR}/sums.sig" -out "${TMP_DIR}/sums.sig.bin" 2>/dev/null; then
+        return 1
+    fi
+    openssl pkeyutl -verify -pubin -inkey "${TMP_DIR}/release.pub" -rawin \
+        -in "$sums" -sigfile "${TMP_DIR}/sums.sig.bin" >/dev/null 2>&1
 }
 
 # ── DNS validation ──────────────────────────────────────────
@@ -262,14 +293,20 @@ main() {
     # ── Download binary (while DNS still works) ──────────────
 
     ASSET_NAME="${BINARY}-${OS}-${ARCH}"
-    TMP_BIN="$(mktemp "/tmp/${BINARY}.XXXXXX")"
-    TMP_SUMS="$(mktemp "/tmp/${BINARY}.sums.XXXXXX")"
+    TMP_DIR="$(mktemp -d "/tmp/${BINARY}.XXXXXX")"
+    TMP_BIN="${TMP_DIR}/${BINARY}"
+    TMP_SUMS="${TMP_DIR}/SHA256SUMS"
     if ! download "$URL" "$TMP_BIN" "$ASSET_NAME"; then
         error "Download failed: ${URL}"
         exit 1
     fi
     if ! download "$SUMS_URL" "$TMP_SUMS" "SHA256SUMS"; then
         error "Download failed: ${SUMS_URL}"
+        exit 1
+    fi
+
+    if ! verify_manifest_signature "$TMP_SUMS" "${SUMS_URL}.sig"; then
+        error "Release signature verification failed for SHA256SUMS."
         exit 1
     fi
 
@@ -283,7 +320,6 @@ main() {
         exit 1
     fi
     success "Checksum verified for ${ASSET_NAME}."
-    chmod +x "$TMP_BIN"
 
     # ── Stop existing service ────────────────────────────────
 
@@ -295,9 +331,11 @@ main() {
     # ── Install binary ───────────────────────────────────────
 
     info "Installing to ${INSTALL_DIR}/${BINARY}..."
+    # The service runs this file as root, so root must own it. Moving the
+    # download into place would keep it owned by, and writable for, the user
+    # running this script.
     run_as_root mkdir -p "$INSTALL_DIR"
-    run_as_root mv "$TMP_BIN" "${INSTALL_DIR}/${BINARY}"
-    TMP_BIN=""
+    run_as_root install -m 0755 -o 0 -g 0 "$TMP_BIN" "${INSTALL_DIR}/${BINARY}"
 
     # ── Register system service ──────────────────────────────
 
@@ -308,8 +346,8 @@ main() {
     # token in the caller's shell history.
     set -- install -profile "$PROFILE_ID"
     if [ -n "$ACCOUNT_TOKEN" ]; then
-        TMP_TOKEN="$(mktemp "/tmp/${BINARY}.token.XXXXXX")"
-        chmod 600 "$TMP_TOKEN"
+        TMP_TOKEN="${TMP_DIR}/token"
+        (umask 077 && : > "$TMP_TOKEN")
         printf '%s' "$ACCOUNT_TOKEN" > "$TMP_TOKEN"
         set -- "$@" -token-file "$TMP_TOKEN"
     fi
