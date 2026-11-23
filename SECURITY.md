@@ -20,6 +20,14 @@ The current baseline for changes that affect DNS handling, local service behavio
 
 - maintainers review the change manually before release
 - the Go test suite passes in CI
-- release artifacts are published with checksums
+- release artifacts are published with checksums, and the checksum manifest is signed with the project's Ed25519 release key
+
+## What is verified, and where
+
+- **Automatic updates and `ublockdns upgrade`** refuse a release unless its checksum manifest is signed for that exact version, the binary matches the manifest, and the new binary runs.
+- **`install.sh`** checks the manifest signature when the local `openssl` supports Ed25519 (OpenSSL 3 or later). Elsewhere, including the LibreSSL that ships with macOS, it prints a notice and relies on the checksum.
+- **`install.ps1` and the Windows GUI installer** rely on the checksum only. Windows PowerShell has no Ed25519 support, and the installers are not Authenticode-signed.
+
+A checksum alone proves a download matches the manifest published next to it, not that the release is genuine.
 
 These steps improve confidence, but they are not a substitute for a dedicated security assessment.
