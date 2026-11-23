@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -84,7 +85,9 @@ func migrateTrustedFiles(from, to string) {
 			}
 		}
 	}
-	_ = os.Remove(from)
+	if err := os.Remove(from); err != nil && !os.IsNotExist(err) {
+		log.Printf("Warning: some files were not moved to the restricted %s and remain in %s", to, from)
+	}
 }
 
 // migrateTrustedFile checks and reads src through one handle: the old
